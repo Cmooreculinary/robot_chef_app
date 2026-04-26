@@ -1,52 +1,36 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { CaptainCulinary } from "@/components/CaptainCulinary";
-import OrnamentDivider from "@/components/OrnamentDivider";
+
+const LOGO_URL =
+  "https://customer-assets.emergentagent.com/job_captain-culinary/artifacts/6w2zmito_0cd82f23-54a2-4aa9-9deb-e0a596e4b09d.png";
 
 export default function Welcome() {
   const nav = useNavigate();
   return (
     <div className="cck-page min-h-screen flex flex-col" data-testid="welcome-page">
       <div className="flex-1 flex flex-col items-center justify-center text-center cck-anim-fade-up">
-        {/* eyebrow */}
-        <div className="cck-eyebrow" data-testid="welcome-eyebrow">
-          A Captain Culinary App
-        </div>
-
-        {/* hero captain */}
-        <div className="mt-4 sm:mt-6 relative">
-          <CaptainCulinary size="hero" float />
-        </div>
-
-        {/* app name */}
-        <h1
-          className="cck-h1 mt-6 sm:mt-8"
-          style={{ fontSize: "clamp(2.4rem, 7vw, 4.6rem)" }}
-          data-testid="welcome-app-name"
-        >
-          Captain Culinary
-          <span
-            className="block cck-display mt-2"
-            style={{ fontSize: "clamp(0.9rem, 2.4vw, 1.4rem)", color: "var(--cck-teal-deep)" }}
-          >
-            K I D S
-          </span>
-        </h1>
-
-        {/* tagline */}
+        {/* Provided logo — used as-is, reasonably large */}
         <div
-          className="mt-3 sm:mt-4 cck-display"
-          style={{ fontSize: "clamp(0.85rem, 2vw, 1rem)", color: "var(--cck-coral-deep)" }}
-          data-testid="welcome-tagline"
+          className="w-full flex justify-center"
+          style={{ isolation: "isolate" }}
+          data-testid="welcome-logo-wrap"
         >
-          Learn · Cook · Serve
+          <img
+            src={LOGO_URL}
+            alt="Captain Culinary Kids — Cooking · Compassion · Community · Learn · Cook · Serve"
+            draggable={false}
+            className="cck-anim-float w-[88vw] sm:w-[560px] lg:w-[640px] max-w-[720px] h-auto select-none"
+            style={{
+              filter: "drop-shadow(0 18px 36px rgba(16,42,67,0.18))",
+              mixBlendMode: "multiply",
+            }}
+            data-testid="welcome-logo-image"
+          />
         </div>
 
-        <OrnamentDivider>· · ·</OrnamentDivider>
-
-        {/* welcome copy */}
+        {/* welcome copy (text below the logo) */}
         <p
-          className="max-w-xl mx-auto text-base sm:text-lg leading-relaxed"
+          className="mt-8 sm:mt-10 max-w-xl mx-auto text-base sm:text-lg leading-relaxed"
           style={{ fontFamily: "var(--font-body)", color: "var(--cck-navy-soft)" }}
           data-testid="welcome-copy"
         >
@@ -56,7 +40,7 @@ export default function Welcome() {
         </p>
 
         {/* actions */}
-        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+        <div className="mt-7 sm:mt-9 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
           <button
             onClick={() => nav("/age")}
             className="cck-btn-primary text-base sm:text-lg"
@@ -75,20 +59,12 @@ export default function Welcome() {
 
         {/* one-time purchase line */}
         <div
-          className="mt-8 cck-eyebrow"
+          className="mt-7 cck-eyebrow"
           style={{ color: "var(--cck-navy-soft)" }}
           data-testid="welcome-purchase-line"
         >
           Buy Once · Build Food Skills For Years
         </div>
-      </div>
-
-      {/* footer mark */}
-      <div
-        className="text-center mt-10 text-xs"
-        style={{ fontFamily: "var(--font-plate)", letterSpacing: "0.3em", color: "var(--cck-navy-soft)" }}
-      >
-        EST · CAPTAIN · CULINARY · KIDS
       </div>
     </div>
   );
