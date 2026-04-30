@@ -2,7 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 
 const LOGO_URL =
-  "https://customer-assets.emergentagent.com/job_captain-culinary/artifacts/6w2zmito_0cd82f23-54a2-4aa9-9deb-e0a596e4b09d.png";
+  "https://customer-assets.emergentagent.com/job_captain-culinary/artifacts/kfounkjt_LOGO%21.png";
 
 export default function Welcome() {
   const nav = useNavigate();
