@@ -13,8 +13,8 @@ const items = [
 export default function BottomNavigation() {
   return (
     <nav
-      className="cck-bottomnav fixed bottom-0 left-0 right-0"
-      style={{ zIndex: 60 }}
+      className="cck-bottomnav fixed left-0 right-0 bottom-12 sm:bottom-0"
+      style={{ zIndex: 9999 }}
       data-testid="bottom-navigation"
     >
       <div className="max-w-[1200px] mx-auto px-2 py-2 grid grid-cols-5 gap-1">

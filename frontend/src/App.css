@@ -14,7 +14,7 @@
 
 @media (max-width: 640px) {
     .cck-shell {
-        padding-bottom: 88px;
+        padding-bottom: 140px; /* extra room on mobile: nav sits above preview badge */
     }
 }
 
