@@ -12,10 +12,11 @@ import {
   Clock,
   Pause,
   ThermometerSun,
-  Wifi,
-  WifiOff,
-  Cloud,
+  Radio,
   Smartphone,
+  Printer,
+  Presentation,
+  UserRound,
   BookOpen,
   Heart,
   ShieldAlert,
@@ -30,6 +31,7 @@ import {
   Mail,
   Compass,
   Eye,
+  Layers,
 } from "lucide-react";
 import { CaptainCulinary } from "@/components/CaptainCulinary";
 
@@ -69,9 +71,9 @@ export default function Welcome() {
 
       <ProblemSection />
       <SolutionSection />
+      <HybridArchitecture />
       <PillarsSection />
       <LiveLessonMode />
-      <HybridArchitecture />
       <MinistryLayer />
       <UseCasesSection />
       <NotClaiming />
@@ -469,59 +471,76 @@ function Pill({ icon: Icon, label }) {
 }
 
 /* ============================================================
-   Hybrid architecture
+   Three teaching modes
    ============================================================ */
 function HybridArchitecture() {
   return (
     <section
-      id="hybrid"
+      id="teaching-modes"
       className="cck-section"
-      data-testid="hybrid-section"
+      data-testid="teaching-modes-section"
     >
       <div className="cck-section-inner cck-anchor">
         <div className="max-w-2xl mx-auto text-center">
           <div className="cck-section-eyebrow cck-section-eyebrow-navy">
-            <Cloud size={12} /> Hybrid Architecture
+            <Layers size={12} /> Three Teaching Modes
           </div>
           <h2 className="cck-section-headline mt-5" style={{ fontSize: "clamp(1.7rem, 4vw, 2.6rem)" }}>
-            On-device when it can. Online when it should.
+            Captain Culinary teaches in three styles.
           </h2>
           <p className="cck-section-lead mt-4">
-            Built to work in homes, classrooms, and rural programs alike — and
-            ready to grow as AI improves over time.
+            One mentor · one curriculum · three ways to reach a child — wherever
+            they learn.
           </p>
         </div>
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 cck-stagger" data-testid="hybrid-grid">
-          <ArchCard
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 cck-stagger" data-testid="teaching-modes-grid">
+          <ModeCard
+            number="01"
+            icon={Radio}
+            tone="coral"
+            title="Fully Live Interactive"
+            tag="Internet · Camera · Voice"
+            body="Cap teaches in real time — listening, seeing, and responding within CCK guardrails. For homes and classrooms with strong internet."
+            testId="mode-live"
+          />
+          <ModeCard
+            number="02"
             icon={Smartphone}
             tone="teal"
-            title="On-Device Core"
-            body="Basic lessons, safety content, illustrated teaching plates, and core teaching can live on-device when possible — supporting offline learning."
-            testId="arch-on-device"
+            title="Cap's Local Platform"
+            tag="On-device · Narrated · Not interactive"
+            body="Cap has every lesson onboard. He talks the class through each teaching plate — no internet needed. One-way narration, always ready."
+            testId="mode-local"
           />
-          <ArchCard
-            icon={Wifi}
+          <ModeCard
+            number="03"
+            icon={Printer}
             tone="gold"
-            title="Live Visual Coaching"
-            body="Camera-based interaction and real-time coaching are only available when internet and latency are strong enough to keep the experience safe."
-            testId="arch-online"
-          />
-          <ArchCard
-            icon={WifiOff}
-            tone="coral"
-            title="Offline-Safe by Default"
-            body="Offline mode never includes live camera feeds. Children get the structured lesson experience without dependence on network coverage."
-            testId="arch-offline"
+            title="Printed Presentation"
+            tag="Paper · Classroom · Teacher-led"
+            body="The full teaching module is printable. A teacher walks the class through each plate as a presentation — no devices required."
+            testId="mode-printed"
           />
         </div>
+
         <div
-          className="mt-8 cck-card p-5 max-w-3xl mx-auto"
-          style={{ background: "rgba(255,255,255,0.7)" }}
+          className="mt-8 cck-card p-5 sm:p-6 max-w-3xl mx-auto"
+          style={{ background: "rgba(255,255,255,0.75)" }}
+          data-testid="delivery-formats"
         >
-          <p className="text-sm text-center" style={{ color: "var(--cck-navy-soft)", fontFamily: "var(--font-body)" }}>
-            <strong style={{ color: "var(--cck-navy)" }}>Model-flexible by design.</strong>{" "}
-            The architecture stays open so future AI improvements can be adopted
-            without disrupting the core learning experience.
+          <div className="cck-eyebrow text-center">Delivered Through</div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <DeliveryPill icon={GraduationCap} label="Through the teacher" testId="delivery-teacher" />
+            <DeliveryPill icon={UserRound} label="Individually" testId="delivery-individual" />
+            <DeliveryPill icon={Users} label="As a group" testId="delivery-group" />
+          </div>
+          <p
+            className="mt-5 text-sm text-center"
+            style={{ color: "var(--cck-navy-soft)", fontFamily: "var(--font-body)" }}
+          >
+            <strong style={{ color: "var(--cck-navy)" }}>Mix and match.</strong>{" "}
+            Partners can offer any combination of the three modes to fit their
+            program, their classroom, and their bandwidth.
           </p>
         </div>
       </div>
@@ -529,23 +548,65 @@ function HybridArchitecture() {
   );
 }
 
-function ArchCard({ icon: Icon, tone, title, body, testId }) {
+function ModeCard({ number, icon: Icon, tone, title, tag, body, testId }) {
   const tones = {
-    teal: "var(--cck-teal-deep)",
-    gold: "var(--cck-gold-deep)",
-    coral: "var(--cck-coral-deep)",
-  };
+    teal: { color: "var(--cck-teal-deep)", ring: "rgba(28,124,125,0.25)", bg: "rgba(28,124,125,0.06)" },
+    gold: { color: "var(--cck-gold-deep)", ring: "rgba(242,184,75,0.35)", bg: "rgba(242,184,75,0.09)" },
+    coral: { color: "var(--cck-coral-deep)", ring: "rgba(242,106,91,0.30)", bg: "rgba(242,106,91,0.06)" },
+  }[tone];
   return (
-    <div className="cck-pillar cck-anim-fade-up" data-testid={testId}>
-      <div className="cck-pillar-icon">
-        <Icon size={24} color={tones[tone]} strokeWidth={1.7} />
+    <div
+      className="cck-pillar cck-anim-fade-up relative"
+      style={{ background: tones.bg, borderColor: tones.ring }}
+      data-testid={testId}
+    >
+      <div
+        className="absolute top-4 right-5 font-bold"
+        style={{
+          fontFamily: "var(--font-plate)",
+          fontSize: "1.25rem",
+          letterSpacing: "0.1em",
+          color: tones.color,
+          opacity: 0.7,
+        }}
+      >
+        {number}
       </div>
-      <h3 className="mt-4" style={{ fontFamily: "var(--font-display)", fontSize: "1.2rem", fontWeight: 600, color: "var(--cck-navy)" }}>
+      <div className="cck-pillar-icon" style={{ background: "var(--cck-cream)" }}>
+        <Icon size={24} color={tones.color} strokeWidth={1.7} />
+      </div>
+      <div
+        className="mt-4 cck-eyebrow"
+        style={{ color: tones.color, fontSize: "0.62rem" }}
+      >
+        {tag}
+      </div>
+      <h3 className="mt-1" style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem", fontWeight: 600, color: "var(--cck-navy)" }}>
         {title}
       </h3>
-      <p className="mt-1.5 text-[14px] leading-relaxed" style={{ fontFamily: "var(--font-body)", color: "var(--cck-navy-soft)" }}>
+      <p className="mt-2 text-[14px] leading-relaxed" style={{ fontFamily: "var(--font-body)", color: "var(--cck-navy-soft)" }}>
         {body}
       </p>
+    </div>
+  );
+}
+
+function DeliveryPill({ icon: Icon, label, testId }) {
+  return (
+    <div
+      className="rounded-xl px-4 py-3 inline-flex items-center justify-center gap-2"
+      style={{
+        background: "var(--cck-cream)",
+        border: "1px solid var(--cck-paper-line)",
+        fontFamily: "var(--font-ui)",
+        fontWeight: 600,
+        color: "var(--cck-navy)",
+        fontSize: "0.875rem",
+      }}
+      data-testid={testId}
+    >
+      <Icon size={16} color="var(--cck-teal-deep)" strokeWidth={1.8} />
+      {label}
     </div>
   );
 }
@@ -818,7 +879,7 @@ function Footer({ onPreview, onParent }) {
             { label: "For Parents · Teachers", onClick: onParent, testId: "footer-parent" },
             { label: "Ministry Layer", to: "ministry", testId: "footer-ministry" },
             { label: "Use Cases", to: "use-cases", testId: "footer-use-cases" },
-            { label: "Hybrid Architecture", to: "hybrid", testId: "footer-hybrid" },
+            { label: "Three Teaching Modes", to: "teaching-modes", testId: "footer-teaching-modes" },
           ]}
         />
         <FooterCol
