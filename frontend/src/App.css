@@ -31,3 +31,12 @@
 .cck-no-nav {
     padding-bottom: 0;
 }
+
+.cck-shell-fluid {
+    max-width: none;
+    padding: 0;
+}
+
+.cck-shell-fluid.cck-no-nav {
+    padding-bottom: 0;
+}

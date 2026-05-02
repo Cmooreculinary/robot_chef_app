@@ -19,13 +19,18 @@ import Settings from "@/pages/Settings";
 import BottomNavigation from "@/components/BottomNavigation";
 
 const HIDE_NAV_PATHS = ["/", "/age", "/parent"];
+const FLUID_PATHS = ["/"];
 
 function ShellContent() {
   const location = useLocation();
   const hideNav = HIDE_NAV_PATHS.includes(location.pathname);
+  const fluid = FLUID_PATHS.includes(location.pathname);
 
   return (
-    <div className={`cck-shell ${hideNav ? "cck-no-nav" : ""}`} data-testid="app-shell">
+    <div
+      className={`cck-shell ${hideNav ? "cck-no-nav" : ""} ${fluid ? "cck-shell-fluid" : ""}`}
+      data-testid="app-shell"
+    >
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/age" element={<AgeSelection />} />
