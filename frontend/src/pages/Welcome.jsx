@@ -824,10 +824,10 @@ function Footer({ onPreview, onParent }) {
         <FooterCol
           title="Coming Next"
           items={[
+            { label: "Live Mode Test · adult", href: "/live-test", testId: "footer-live-test" },
             { label: "Lessons hub", testId: "footer-coming-lessons" },
             { label: "Partners portal", testId: "footer-coming-partners" },
             { label: "Safety guide", testId: "footer-coming-safety" },
-            { label: "About", testId: "footer-coming-about" },
           ]}
         />
       </div>
