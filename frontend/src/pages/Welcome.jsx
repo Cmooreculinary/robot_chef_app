@@ -38,6 +38,17 @@ import { CaptainCulinary } from "@/components/CaptainCulinary";
 const LOGO_URL =
   "https://customer-assets.emergentagent.com/job_captain-culinary/artifacts/kfounkjt_LOGO%21.png";
 
+// Diverse kid portraits — illustrated in the AWANA explainer style.
+// Each avatar gets one of AWANA's four game-circle colors as its ring.
+const KIDS = [
+  { src: "/illustrations/kid_portrait_1.png", color: "cck-kid-yellow", alt: "Curious young chef with a warm smile" },
+  { src: "/illustrations/kid_portrait_2.png", color: "cck-kid-blue",   alt: "Confident young chef ready to cook" },
+  { src: "/illustrations/kid_portrait_3.png", color: "cck-kid-green",  alt: "Thoughtful young chef with apron" },
+  { src: "/illustrations/kid_portrait_4.png", color: "cck-kid-red",    alt: "Joyful young chef beaming a smile" },
+  { src: "/illustrations/kid_portrait_5.png", color: "cck-kid-yellow", alt: "Calm young chef looking ahead" },
+];
+const KIDS_GROUP_IMG = "/illustrations/kids_group_cooking.png";
+
 const NAV_ITEMS = [
   { id: "mission", label: "Mission" },
   { id: "how", label: "How It Works" },
@@ -71,6 +82,7 @@ export default function Welcome() {
 
       <ProblemSection />
       <SolutionSection />
+      <KidsBannerSection />
       <HybridArchitecture />
       <PillarsSection />
       <LiveLessonMode />
@@ -206,6 +218,14 @@ function Hero({ onExplore, onHow }) {
             >
               Built for Families · Schools · Churches · Ministries
             </div>
+
+            {/* Kids row — diversity signal right in the hero */}
+            <KidsRow
+              size={56}
+              caption="A warm learning home for every kid at the table."
+              className="mt-7 justify-center lg:justify-start"
+              testId="hero-kids-row"
+            />
           </div>
         </div>
       </div>
@@ -471,8 +491,81 @@ function Pill({ icon: Icon, label }) {
 }
 
 /* ============================================================
-   Three teaching modes
+   Kids banner — diverse, warm, between Solution and Teaching Modes
    ============================================================ */
+function KidsBannerSection() {
+  return (
+    <section
+      className="cck-section"
+      style={{ paddingTop: "2rem", paddingBottom: "2rem" }}
+      data-testid="kids-banner-section"
+    >
+      <div className="cck-section-inner">
+        <div className="cck-kids-banner" data-testid="kids-banner">
+          <img
+            src={KIDS_GROUP_IMG}
+            alt="A diverse group of children learning around a shared kitchen table"
+            loading="lazy"
+          />
+        </div>
+        <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
+          <div className="cck-awana-dots">
+            <span className="cck-awana-dot cck-awana-dot-red" />
+            <span className="cck-awana-dot cck-awana-dot-blue" />
+            <span className="cck-awana-dot cck-awana-dot-green" />
+            <span className="cck-awana-dot cck-awana-dot-yellow" />
+          </div>
+          <p
+            className="text-sm"
+            style={{
+              fontFamily: "var(--font-plate)",
+              letterSpacing: "0.28em",
+              textTransform: "uppercase",
+              color: "var(--cck-navy-soft)",
+            }}
+          >
+            Every Kid · Every Table · Every Lesson
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================================================
+   Shared kid-row + kid-banner building blocks
+   ============================================================ */
+function KidsRow({ size = 60, caption, className = "", testId }) {
+  return (
+    <div className={`flex flex-col items-center gap-3 ${className}`} data-testid={testId}>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {KIDS.map((k, i) => (
+          <div
+            key={i}
+            className={`cck-kid-avatar ${k.color}`}
+            style={{ width: size, height: size }}
+            data-testid={`${testId || "kids-row"}-avatar-${i}`}
+          >
+            <img src={k.src} alt={k.alt} loading="lazy" />
+          </div>
+        ))}
+      </div>
+      {caption && (
+        <p
+          className="text-xs"
+          style={{
+            fontFamily: "var(--font-plate)",
+            letterSpacing: "0.24em",
+            textTransform: "uppercase",
+            color: "var(--cck-navy-soft)",
+          }}
+        >
+          {caption}
+        </p>
+      )}
+    </div>
+  );
+}
 function HybridArchitecture() {
   return (
     <section
@@ -837,6 +930,21 @@ function FinalCTA({ onPreview }) {
               >
                 Preview the Learning Model <ArrowRight size={16} />
               </button>
+            </div>
+
+            {/* Kids row in the CTA — mirrors the PDF explainer */}
+            <div className="mt-10 flex justify-center" data-testid="cta-kids-row">
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+                {KIDS.map((k, i) => (
+                  <div
+                    key={i}
+                    className={`cck-kid-avatar ${k.color}`}
+                    style={{ width: 52, height: 52 }}
+                  >
+                    <img src={k.src} alt={k.alt} loading="lazy" />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

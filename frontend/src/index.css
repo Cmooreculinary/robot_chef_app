@@ -27,6 +27,12 @@
     --cck-paper-line: #C7B68E;
     --cck-paper-line-soft: #E0CFA8;
 
+    /* AWANA circle-game accent colors — used sparingly across the site */
+    --awana-red: #E03C31;
+    --awana-blue: #0B7FC4;
+    --awana-green: #3FA34A;
+    --awana-yellow: #FFCE00;
+
     /* Type */
     --font-display: 'Fraunces', Georgia, serif;
     --font-plate: 'IM Fell English SC', 'Cormorant Garamond', serif;
@@ -588,6 +594,101 @@
 }
 
 /* ---- Existing welcome utility kept for back-compat ---- */
+
+/* ============================================================
+   AWANA accent dots + kid portrait rings
+   ============================================================ */
+
+.cck-awana-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.cck-awana-dots::before,
+.cck-awana-dots::after {
+    content: '';
+    width: 22px;
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+        var(--awana-red) 0 25%,
+        var(--awana-blue) 25% 50%,
+        var(--awana-green) 50% 75%,
+        var(--awana-yellow) 75% 100%);
+    opacity: 0.7;
+}
+
+.cck-awana-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    display: inline-block;
+    box-shadow: 0 1px 3px rgba(16, 42, 67, 0.18);
+}
+
+.cck-awana-dot-red    { background: var(--awana-red); }
+.cck-awana-dot-blue   { background: var(--awana-blue); }
+.cck-awana-dot-green  { background: var(--awana-green); }
+.cck-awana-dot-yellow { background: var(--awana-yellow); }
+
+/* Circular kid portrait with AWANA color ring */
+.cck-kid-avatar {
+    position: relative;
+    border-radius: 999px;
+    padding: 4px;
+    background: var(--cck-cream);
+    box-shadow: 0 8px 20px -10px rgba(16, 42, 67, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition: transform 300ms ease, box-shadow 300ms ease;
+}
+
+.cck-kid-avatar:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 28px -12px rgba(16, 42, 67, 0.30);
+}
+
+.cck-kid-avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    object-fit: cover;
+}
+
+.cck-kid-avatar::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 999px;
+    padding: 3px;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    background: currentColor;
+    pointer-events: none;
+}
+
+.cck-kid-red    { color: var(--awana-red); }
+.cck-kid-blue   { color: var(--awana-blue); }
+.cck-kid-green  { color: var(--awana-green); }
+.cck-kid-yellow { color: var(--awana-yellow); }
+
+/* Banner figure (group image) */
+.cck-kids-banner {
+    width: 100%;
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid var(--cck-paper-line-soft);
+    box-shadow: 0 24px 48px -24px rgba(16, 42, 67, 0.30);
+    background: var(--cck-cream);
+}
+
+.cck-kids-banner img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
 
 @layer base {
     [data-debug-wrapper="true"] { display: contents !important; }
