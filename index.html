@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cap — Robot Chef Mentor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ── Cap animations ── */
+    @keyframes capPulse {
+      0%,100% {
+        filter: drop-shadow(0 0 6px rgba(59,130,246,.4)) drop-shadow(0 0 12px rgba(59,130,246,.2));
+        transform: scale(1);
+      }
+      50% {
+        filter: drop-shadow(0 0 28px rgba(59,130,246,.95)) drop-shadow(0 0 55px rgba(96,165,250,.7)) drop-shadow(0 0 80px rgba(59,130,246,.35));
+        transform: scale(1.03);
+      }
+    }
+    @keyframes capIdle {
+      0%,100% { filter: drop-shadow(0 0 4px rgba(59,130,246,.1)); }
+      50%      { filter: drop-shadow(0 0 10px rgba(59,130,246,.35)); }
+    }
+    @keyframes starTwinkle {
+      from { opacity: .15; transform: scale(.8); }
+      to   { opacity: .8;  transform: scale(1.3); }
+    }
+    @keyframes bubbleIn {
+      from { opacity: 0; transform: scale(.93) translateY(4px); }
+      to   { opacity: 1; transform: scale(1)   translateY(0);   }
+    }
+    @keyframes dotBounce {
+      0%,60%,100% { transform: translateY(0);   opacity: .4; }
+      30%          { transform: translateY(-7px); opacity: 1;  }
+    }
+    @keyframes micPulse {
+      0%,100% { box-shadow: 0 0 0 0   rgba(239,68,68,.7); }
+      70%      { box-shadow: 0 0 0 12px rgba(239,68,68,0);  }
+    }
+    @keyframes timerBlink {
+      0%,100% { opacity: 1;  }
+      50%      { opacity: .4; }
+    }
+
+    .cap-idle     { animation: capIdle  3s  ease-in-out infinite; }
+    .cap-thinking { animation: capPulse 1.2s ease-in-out infinite; }
+
+    .typing-dot               { animation: dotBounce 1.2s ease-in-out infinite; }
+    .typing-dot:nth-child(2)  { animation-delay: .2s; }
+    .typing-dot:nth-child(3)  { animation-delay: .4s; }
+
+    .bubble-in   { animation: bubbleIn .3s ease-out forwards; }
+    .mic-active  { animation: micPulse 1s ease-out infinite; background-color: #ef4444 !important; }
+    .timer-blink { animation: timerBlink 1s ease-in-out infinite; }
+
+    /* ── PiP ── */
+    #pip-window {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 40;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    #pip-window.dragging { cursor: grabbing; }
+
+    /* ── Scrollbars ── */
+    #chat-messages::-webkit-scrollbar { width: 3px; }
+    #chat-messages::-webkit-scrollbar-track { background: transparent; }
+    #chat-messages::-webkit-scrollbar-thumb { background: rgba(59,130,246,.35); border-radius: 4px; }
+
+    #offline-checklist::-webkit-scrollbar { width: 3px; }
+    #offline-checklist::-webkit-scrollbar-thumb { background: rgba(59,130,246,.25); border-radius: 4px; }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #030712; }
+
+    /* ── Gradient text ── */
+    .grad-blue  { background: linear-gradient(135deg,#60a5fa,#34d399); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+    .grad-violet{ background: linear-gradient(135deg,#a78bfa,#f9a8d4); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  </style>
+</head>
+<body class="text-white min-h-screen overflow-hidden">
+
+<!-- ══════════════════════════════════════════════
+     SETUP SCREEN
+══════════════════════════════════════════════ -->
+<div id="setup-screen"
+     class="fixed inset-0 z-50 flex items-center justify-center"
+     style="background: radial-gradient(ellipse at 50% -10%, #1e3a5f 0%, #030712 65%)">
+
+  <div class="w-full max-w-md px-6 text-center">
+
+    <!-- Cap avatar -->
+    <div class="flex justify-center mb-5">
+      <div class="relative w-28 h-28">
+        <img src="cap.png" alt="Cap"
+             class="w-full h-full object-contain cap-idle rounded-full"
+             onerror="this.style.display='none';document.getElementById('setup-cap-fb').style.display='flex'">
+        <div id="setup-cap-fb"
+             class="w-full h-full items-center justify-center text-7xl cap-idle"
+             style="display:none">🤖</div>
+      </div>
+    </div>
+
+    <h1 class="text-4xl font-extrabold mb-1 grad-blue">Meet Cap</h1>
+    <p class="text-blue-300 text-lg mb-1">Your Robot Chef Mentor</p>
+    <p class="text-gray-500 text-sm mb-7">Live coaching while you cook — safe, fun, and encouraging.</p>
+
+    <!-- API Key -->
+    <div class="mb-5 text-left">
+      <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">
+        Gemini API Key <span class="text-gray-600 font-normal normal-case">(optional — enables live AI coaching)</span>
+      </label>
+      <div class="relative">
+        <input type="password" id="api-key-input"
+               placeholder="AIza…"
+               class="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600
+                      focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm pr-11"/>
+        <button onclick="toggleKeyVis()"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 text-base select-none"
+                title="Show/hide key">👁</button>
+      </div>
+      <p class="text-xs text-gray-600 mt-1.5">Key is stored only in your browser. Leave blank for offline safety guides.</p>
+    </div>
+
+    <!-- Age group -->
+    <p class="text-sm font-semibold text-gray-300 mb-3">Who's cooking today?</p>
+    <div class="grid grid-cols-2 gap-3 mb-6">
+      <button id="btn-kids" onclick="selectAge('kids')"
+              class="age-card group p-5 rounded-2xl border-2 border-gray-700 hover:border-blue-500
+                     bg-gray-800/40 hover:bg-blue-900/30 transition-all duration-200 text-left">
+        <div class="text-3xl mb-1.5">👶</div>
+        <div class="font-bold text-white text-sm">I'm a Kid</div>
+        <div class="text-xs text-gray-500">Ages 7–12</div>
+        <div class="text-xs text-blue-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Safety & Foundations</div>
+      </button>
+      <button id="btn-teens" onclick="selectAge('teens')"
+              class="age-card group p-5 rounded-2xl border-2 border-gray-700 hover:border-cyan-500
+                     bg-gray-800/40 hover:bg-cyan-900/30 transition-all duration-200 text-left">
+        <div class="text-3xl mb-1.5">🧑‍🍳</div>
+        <div class="font-bold text-white text-sm">I'm a Teen</div>
+        <div class="text-xs text-gray-500">Ages 14+</div>
+        <div class="text-xs text-cyan-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Global Cuisines & Skills</div>
+      </button>
+    </div>
+
+    <button id="start-btn" onclick="startApp()" disabled
+            class="w-full py-4 rounded-2xl font-bold text-lg transition-all duration-300
+                   bg-gray-700 text-gray-500 cursor-not-allowed">
+      Let's Cook! 👨‍🍳
+    </button>
+    <p class="text-xs text-gray-700 mt-3">No API key? Cap uses built-in offline safety guides.</p>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════ -->
+<div id="main-app" class="hidden fixed inset-0 flex flex-col">
+
+  <!-- ── Header ── -->
+  <header class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800/60
+                 bg-gray-900/60 backdrop-blur-sm flex-shrink-0">
+
+    <!-- Left: logo + badge -->
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
+        <img src="cap.png" alt="Cap" class="w-full h-full object-cover"
+             onerror="this.parentElement.innerHTML='<span class=\'text-xl\'>🤖</span>'">
+      </div>
+      <div>
+        <div class="font-bold text-sm leading-tight">Cap</div>
+        <div id="hdr-badge" class="text-xs text-blue-400 leading-tight">Robot Chef</div>
+      </div>
+    </div>
+
+    <!-- Center: lesson timer -->
+    <div class="flex items-center gap-2 bg-gray-800/60 rounded-xl px-3 py-1.5 select-none">
+      <svg id="timer-svg" viewBox="0 0 36 36" class="w-8 h-8" style="transform:rotate(-90deg)">
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1f2937" stroke-width="2.8"/>
+        <circle id="timer-arc" cx="18" cy="18" r="15.9" fill="none" stroke="#3b82f6"
+                stroke-width="2.8" stroke-dasharray="100 0" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <div id="timer-display" class="text-sm font-mono font-bold text-white leading-none">30:00</div>
+        <div class="text-xs text-gray-500 leading-none mt-0.5">lesson</div>
+      </div>
+    </div>
+
+    <!-- Right: hybrid toggle + settings -->
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1.5 bg-gray-800/60 rounded-xl px-3 py-1.5">
+        <span class="text-xs text-gray-500 hidden sm:block">Mode:</span>
+        <button id="mode-toggle" onclick="toggleMode()"
+                class="relative w-10 h-5 rounded-full bg-blue-600 transition-colors duration-300">
+          <div id="mode-thumb"
+               class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-300 translate-x-5"></div>
+        </button>
+        <span id="mode-label" class="text-xs font-semibold text-blue-400">Online</span>
+      </div>
+      <button onclick="showSettings()"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500
+                     hover:text-white hover:bg-gray-700 transition-colors text-base">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ── Main content ── -->
+  <main class="flex flex-1 overflow-hidden">
+
+    <!-- Left panel: Cap -->
+    <div class="w-56 flex-shrink-0 flex flex-col items-center py-5 px-3 border-r border-gray-800/40">
+
+      <!-- Cap image -->
+      <div class="relative mb-3">
+        <div id="cap-glow" class="absolute inset-0 rounded-full pointer-events-none"
+             style="background:radial-gradient(circle,rgba(59,130,246,.25) 0%,transparent 70%); opacity:0; transition:opacity .4s"></div>
+        <img id="cap-img" src="cap.png" alt="Cap"
+             class="w-40 h-40 object-contain cap-idle relative z-10 rounded-full"
+             onerror="this.style.display='none';document.getElementById('cap-fb').style.display='flex'">
+        <div id="cap-fb"
+             class="w-40 h-40 items-center justify-center text-7xl cap-idle relative z-10"
+             style="display:none">🤖</div>
+      </div>
+
+      <!-- Status -->
+      <div class="flex items-center gap-1.5 mb-2.5">
+        <div id="status-dot" class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></div>
+        <span id="status-text" class="text-xs text-gray-400">Ready to cook!</span>
+      </div>
+
+      <!-- Speech bubble -->
+      <div id="speech-bubble"
+           class="hidden w-full bg-blue-900/40 border border-blue-800/50 rounded-2xl rounded-tl-sm p-2.5 text-xs text-blue-100 leading-relaxed bubble-in">
+        <p id="bubble-text"></p>
+      </div>
+
+      <!-- Typing indicator -->
+      <div id="typing-ind" class="hidden w-full bg-gray-800/60 border border-gray-700/50 rounded-2xl p-2.5 mt-2">
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1">
+            <div class="typing-dot w-2 h-2 rounded-full bg-blue-400"></div>
+            <div class="typing-dot w-2 h-2 rounded-full bg-blue-400"></div>
+            <div class="typing-dot w-2 h-2 rounded-full bg-blue-400"></div>
+          </div>
+          <span class="text-xs text-gray-500">Thinking…</span>
+        </div>
+      </div>
+
+      <!-- Live watch indicator -->
+      <div id="live-ind" class="hidden flex items-center gap-1.5 mt-3">
+        <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
+        <span class="text-xs text-gray-600">Watching kitchen</span>
+      </div>
+    </div>
+
+    <!-- Right panel: chat -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- Offline banner -->
+      <div id="offline-banner" class="hidden bg-amber-900/40 border-b border-amber-700/40 px-4 py-2 flex items-center gap-2">
+        <span class="text-amber-400">⚡</span>
+        <span class="text-xs text-amber-200">Offline Mode — Cap is using built-in safety guides.</span>
+      </div>
+
+      <!-- Chat messages -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+
+      <!-- Offline checklist -->
+      <div id="offline-panel" class="hidden border-t border-gray-800/60 px-4 pt-3 pb-1">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-sm">📋</span>
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Safety First Checklist</span>
+          <span class="ml-auto text-xs text-amber-500">Offline</span>
+        </div>
+        <div id="checklist-items" class="space-y-1.5 max-h-28 overflow-y-auto" id="offline-checklist"></div>
+      </div>
+
+      <!-- Input area -->
+      <div class="border-t border-gray-800/50 p-3 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <input type="text" id="user-input"
+                 placeholder="Ask Cap anything about cooking…"
+                 class="flex-1 bg-gray-800/60 border border-gray-700/60 rounded-xl px-4 py-3 text-sm
+                        text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                 onkeydown="handleKey(event)"/>
+          <button id="mic-btn" onclick="toggleMic()" title="Voice input"
+                  class="w-11 h-11 flex items-center justify-center rounded-xl bg-gray-700
+                         hover:bg-gray-600 transition-colors text-base flex-shrink-0">🎤</button>
+          <button onclick="sendMessage()"
+                  class="w-11 h-11 flex items-center justify-center rounded-xl bg-blue-600
+                         hover:bg-blue-500 transition-colors text-sm font-bold flex-shrink-0">➤</button>
+        </div>
+        <p id="input-hint" class="text-xs text-gray-700 mt-1.5 text-center">
+          Cap watches your camera every 3 s when online
+        </p>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     PiP CAMERA
+══════════════════════════════════════════════ -->
+<div id="pip-window">
+  <div class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-gray-700/60"
+       style="width:200px;height:152px;background:#0a0a0a">
+
+    <!-- Drag handle bar -->
+    <div id="pip-bar"
+         class="absolute top-0 left-0 right-0 z-10 bg-black/60 backdrop-blur-sm
+                flex items-center justify-between px-2 py-1 cursor-grab">
+      <div class="flex items-center gap-1">
+        <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
+        <span class="text-xs text-gray-300 font-medium select-none">Camera</span>
+      </div>
+      <button onclick="toggleCamera()" title="Toggle camera"
+              class="text-xs text-gray-500 hover:text-white select-none leading-none">✕</button>
+    </div>
+
+    <video id="camera-feed" autoplay muted playsinline
+           class="w-full h-full object-cover"></video>
+
+    <!-- No-camera placeholder -->
+    <div id="no-cam"
+         class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 pointer-events-auto">
+      <div class="text-3xl mb-1">📷</div>
+      <div class="text-xs text-gray-600 mb-1">Camera off</div>
+      <button onclick="requestCamera()"
+              class="text-xs text-blue-400 hover:text-blue-300 underline">Enable</button>
+    </div>
+
+    <canvas id="cap-canvas" class="hidden" width="320" height="240"></canvas>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     COOLDOWN OVERLAY
+══════════════════════════════════════════════ -->
+<div id="cooldown-overlay" class="hidden fixed inset-0 flex flex-col items-center justify-center text-center p-6"
+     style="z-index:50; background:radial-gradient(ellipse at center,#0c1a3d 0%,#040810 100%)">
+
+  <div id="cooldown-stars" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+  <div class="relative z-10 max-w-md w-full">
+    <div class="flex justify-center mb-5">
+      <img src="cap.png" alt="Cap" class="w-24 h-24 object-contain opacity-70 cap-idle"
+           onerror="this.outerHTML='<div class=\'text-6xl\'>🤖</div>'">
+    </div>
+    <h2 class="text-3xl font-extrabold text-white mb-1">Break Time! 🎉</h2>
+    <p class="text-blue-300 text-sm mb-6">Great cooking session! Time to clean up.<br>All AI features resume after your break.</p>
+
+    <!-- Countdown -->
+    <div id="cooldown-display"
+         class="text-6xl font-bold font-mono text-blue-400 mb-4 tabular-nums">15:00</div>
+    <div class="flex justify-center mb-7">
+      <div class="bg-gray-800/60 rounded-full h-2 w-52">
+        <div id="cooldown-bar" class="h-2 rounded-full bg-blue-500 transition-all duration-1000" style="width:100%"></div>
+      </div>
+    </div>
+
+    <!-- Cleanup checklist -->
+    <div class="bg-gray-800/40 border border-gray-700/40 rounded-2xl p-5 text-left">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">✅ Cleanup Checklist</p>
+      <div class="space-y-2.5">
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Turn off the stove / oven</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Wash all dishes and utensils</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Wipe down the counter</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Put away all ingredients</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Wash hands with soap &amp; water</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <input type="checkbox" class="w-4 h-4 rounded accent-blue-500 flex-shrink-0">
+          <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Let a grown-up know you're done</span>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     CHRISTIAN CARE PATHWAY OVERLAY
+══════════════════════════════════════════════ -->
+<div id="care-overlay" class="hidden fixed inset-0 flex flex-col items-center justify-center text-center p-6"
+     style="z-index:60; background:radial-gradient(ellipse at center,#1e1b4b 0%,#080614 100%)">
+
+  <div id="care-stars" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+  <div class="relative z-10 max-w-lg w-full">
+    <div class="text-5xl mb-4">🙏</div>
+    <h2 class="text-2xl font-extrabold text-white mb-2">Hey, I hear you.</h2>
+    <p class="text-indigo-300 text-sm mb-5">What you're feeling matters. Let's pause cooking for a moment.</p>
+
+    <div class="bg-indigo-900/40 border border-indigo-700/40 rounded-2xl p-5 mb-5 text-left space-y-4">
+
+      <!-- Acknowledgment -->
+      <p id="care-ack" class="text-indigo-100 text-sm leading-relaxed"></p>
+
+      <!-- Prayer box -->
+      <div class="bg-indigo-800/40 border border-indigo-600/30 rounded-xl p-4">
+        <p class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2">✝ A Short Prayer</p>
+        <p id="care-prayer" class="text-indigo-100 text-sm italic leading-relaxed"></p>
+      </div>
+
+      <!-- Trusted adult CTA -->
+      <div class="bg-pink-950/50 border border-pink-700/40 rounded-xl p-4">
+        <p class="text-sm font-bold text-pink-200 mb-1">💬 Please talk to a trusted adult</p>
+        <p class="text-xs text-pink-300/80 leading-relaxed">
+          Share what's on your heart with a parent, guardian, teacher, or pastor.
+          You are loved and you don't have to face this alone.
+        </p>
+      </div>
+    </div>
+
+    <button onclick="returnFromCare()"
+            class="w-full py-3.5 rounded-2xl bg-indigo-700 hover:bg-indigo-600 text-white font-semibold
+                   transition-colors text-sm mb-3">
+      Return to cooking when you're ready 💙
+    </button>
+    <p class="text-xs text-indigo-500/50">Cooking resumes automatically. Take all the time you need.</p>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     SETTINGS MODAL
+══════════════════════════════════════════════ -->
+<div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-80 shadow-2xl">
+    <h3 class="text-lg font-bold text-white mb-4">Settings</h3>
+
+    <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Gemini API Key</label>
+    <input type="password" id="set-key"
+           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                  focus:outline-none focus:border-blue-500 mb-4"/>
+
+    <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Age Group</label>
+    <select id="set-age"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                   focus:outline-none focus:border-blue-500 mb-5">
+      <option value="kids">Kids (7–12) — Foundations &amp; Safety</option>
+      <option value="teens">Teens (14+) — Global Cuisines &amp; Skills</option>
+    </select>
+
+    <div class="flex gap-2">
+      <button onclick="saveSettings()"
+              class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm text-white font-semibold transition-colors">
+        Save
+      </button>
+      <button onclick="closeSettings()"
+              class="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm text-white transition-colors">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
