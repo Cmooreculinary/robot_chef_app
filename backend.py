@@ -210,7 +210,6 @@ if __name__ == "__main__":
     except Exception:
         lan_ip = "your-mac-ip"
     print(f"\n🤖  Cap is running on {MODEL}!")
-    print(f"    Local:  https://localhost:{port}")
-    print(f"    iPad:   https://{lan_ip}:{port}")
-    print(f"\n    ⚠️  First visit: tap 'Advanced' → 'Proceed' to accept the self-signed cert.\n")
-    app.run(host="0.0.0.0", port=port, debug=False, ssl_context="adhoc")
+    print(f"    Local:  http://localhost:{port}")
+    print(f"    Network: http://{lan_ip}:{port}\n")
+    app.run(host="0.0.0.0", port=port, debug=False)
