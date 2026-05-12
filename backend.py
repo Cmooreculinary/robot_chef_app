@@ -10,7 +10,8 @@ import base64
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -26,10 +27,10 @@ if not API_KEY:
         "Run:  export GEMINI_API_KEY=your_key_here"
     )
 
-genai.configure(api_key=API_KEY)
-MODEL = "gemini-2.0-flash"
+client = genai.Client(api_key=API_KEY)
+MODEL = "gemini-2.5-flash"
 
-# ── System prompts (mirrors app.js — single source of truth is here now) ──
+# ── System prompts ─────────────────────────────────────────────
 SYSTEM_PROMPTS = {
     "kids": (
         "You are Cap, a friendly Robot Chef mentor for kids aged 7–12. "
@@ -63,7 +64,7 @@ AUTO_PROMPTS = {
 }
 
 
-# ── Static file serving ───────────────────────────────────────
+# ── Static file serving ────────────────────────────────────────
 @app.route('/')
 def index():
     return send_from_directory(STATIC_DIR, 'index.html')
@@ -82,27 +83,26 @@ def _system(age: str) -> str:
 
 
 def _decode_frame(b64_string: str) -> bytes:
-    """Strip optional data-URI header and decode base64."""
     if "," in b64_string:
         b64_string = b64_string.split(",", 1)[1]
     return base64.b64decode(b64_string)
 
 
-# ── Health check ──────────────────────────────────────────────
+# ── Health check ───────────────────────────────────────────────
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "model": MODEL})
 
 
-# ── Auto-vision endpoint (called every 3 s by the capture loop) ───────────
+# ── Auto-vision endpoint ───────────────────────────────────────
 @app.route("/api/coach/vision", methods=["POST"])
 def vision():
     """
     Body: { "image": "<base64 jpeg>", "age": "kids"|"teens" }
     Returns: { "reply": "..." }
     """
-    data = request.get_json(force=True)
-    age  = data.get("age", "kids")
+    data    = request.get_json(force=True)
+    age     = data.get("age", "kids")
     img_b64 = data.get("image", "")
 
     if not img_b64:
@@ -110,16 +110,14 @@ def vision():
 
     try:
         img_bytes = _decode_frame(img_b64)
-        model = genai.GenerativeModel(
-            model_name=MODEL,
-            system_instruction=_system(age),
-        )
-        response = model.generate_content(
-            [
-                {"mime_type": "image/jpeg", "data": img_bytes},
-                AUTO_PROMPTS.get(age, AUTO_PROMPTS["kids"]),
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=[
+                types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                types.Part.from_text(AUTO_PROMPTS.get(age, AUTO_PROMPTS["kids"])),
             ],
-            generation_config=genai.GenerationConfig(
+            config=types.GenerateContentConfig(
+                system_instruction=_system(age),
                 max_output_tokens=120,
                 temperature=0.75,
             ),
@@ -131,73 +129,69 @@ def vision():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Chat endpoint (user-initiated messages) ───────────────────
+# ── Chat endpoint ──────────────────────────────────────────────
 @app.route("/api/coach/chat", methods=["POST"])
 def chat():
     """
     Body: {
       "message": "...",
       "age": "kids"|"teens",
-      "history": [ {role, parts:[{text}]}, ... ],   // optional
-      "image": "<base64 jpeg>"                       // optional
+      "history": [ {role, parts:[{text}]}, ... ],
+      "image": "<base64 jpeg>"                      // optional
     }
     Returns: { "reply": "...", "history": [...] }
     """
     data    = request.get_json(force=True)
     age     = data.get("age", "kids")
     message = data.get("message", "").strip()
-    history = data.get("history", [])   # [{role, parts:[{text}]}]
+    history = data.get("history", [])
     img_b64 = data.get("image")
 
     if not message:
         return jsonify({"error": "No message provided"}), 400
 
     try:
-        model = genai.GenerativeModel(
-            model_name=MODEL,
-            system_instruction=_system(age),
-        )
-
-        # Rebuild conversation history for the SDK
-        # History entries are text-only; current turn may include a frame
+        # Convert history dicts → types.Content objects
         sdk_history = []
         for turn in history:
             role  = turn.get("role")
-            parts = [p["text"] for p in turn.get("parts", []) if "text" in p]
+            parts = [
+                types.Part.from_text(p["text"])
+                for p in turn.get("parts", []) if "text" in p
+            ]
             if role and parts:
-                sdk_history.append({"role": role, "parts": parts})
+                sdk_history.append(types.Content(role=role, parts=parts))
 
-        chat_session = model.start_chat(history=sdk_history)
-
-        # Build the current user turn
-        user_parts = []
-        if img_b64:
-            try:
-                user_parts.append(
-                    {"mime_type": "image/jpeg", "data": _decode_frame(img_b64)}
-                )
-            except Exception:
-                pass  # frame decode failed — send text only
-        user_parts.append(message)
-
-        response = chat_session.send_message(
-            user_parts,
-            generation_config=genai.GenerationConfig(
+        chat_session = client.chats.create(
+            model=MODEL,
+            history=sdk_history,
+            config=types.GenerateContentConfig(
+                system_instruction=_system(age),
                 max_output_tokens=180,
                 temperature=0.78,
                 top_p=0.92,
             ),
         )
 
+        # Build current user turn
+        user_parts: list[types.Part] = []
+        if img_b64:
+            try:
+                user_parts.append(
+                    types.Part.from_bytes(data=_decode_frame(img_b64), mime_type="image/jpeg")
+                )
+            except Exception:
+                pass  # frame decode failed — send text only
+        user_parts.append(types.Part.from_text(message))
+
+        response   = chat_session.send_message(user_parts)
         reply_text = response.text
 
-        # Return updated history (text-only — keep frames out of history)
+        # Return updated history (text-only — keep frames out of stored history)
         updated_history = history + [
             {"role": "user",  "parts": [{"text": message}]},
             {"role": "model", "parts": [{"text": reply_text}]},
         ]
-
-        # Trim to 16 entries (8 pairs)
         if len(updated_history) > 16:
             updated_history = updated_history[-16:]
 
@@ -208,15 +202,14 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Run ───────────────────────────────────────────────────────
+# ── Run ────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # Get LAN IP so the user knows what to open on iPad
     try:
         lan_ip = socket.gethostbyname(socket.gethostname())
     except Exception:
         lan_ip = "your-mac-ip"
-    print(f"\n🤖  Cap is running!")
+    print(f"\n🤖  Cap is running on {MODEL}!")
     print(f"    Local:  https://localhost:{port}")
     print(f"    iPad:   https://{lan_ip}:{port}")
     print(f"\n    ⚠️  First visit: tap 'Advanced' → 'Proceed' to accept the self-signed cert.\n")
