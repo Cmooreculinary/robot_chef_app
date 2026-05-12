@@ -6,7 +6,7 @@
 const CFG = {
   LESSON_SECS:    30 * 60,   // 30 minutes
   COOLDOWN_SECS:  15 * 60,   // 15 minutes
-  BACKEND:        'http://localhost:5000',
+  BACKEND:        '',         // same origin — Flask serves both UI and API
   CAPTURE_MS:     3000,      // camera frame interval
   AUTO_GAP_MS:    8000,      // min gap between auto-feedback calls
 };
@@ -101,6 +101,7 @@ const S = {
   stream:       null,
   history:      [],           // [{role, parts:[{text}]}] — managed server-side, mirrored here
   recognition:  null,
+  // API key lives server-side only; no client-side key needed
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -414,7 +415,7 @@ async function sendMessage() {
   // Care pathway takes priority
   if (hitsCareKeyword(text)) { triggerCare(text); return; }
 
-  if (S.isOnline && S.apiKey) {
+  if (S.isOnline) {
     await handleOnlineMsg(text);
   } else {
     handleOfflineMsg(text);
@@ -739,7 +740,6 @@ function micOff() {
 // SETTINGS
 // ─────────────────────────────────────────────────────────────
 function showSettings() {
-  document.getElementById('set-key').value = S.apiKey;
   document.getElementById('set-age').value = S.ageGroup || 'kids';
   document.getElementById('settings-modal').classList.remove('hidden');
 }

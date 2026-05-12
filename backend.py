@@ -1,19 +1,23 @@
 """
 Cap — Robot Chef Mentor | backend.py
-Flask proxy server — keeps the Gemini API key server-side.
+Flask server — serves the frontend and proxies Gemini.
 Run: python backend.py
 """
 
 import os
+import socket
 import base64
-import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from dotenv import load_dotenv
 import google.generativeai as genai
 
+load_dotenv()
+
 # ── Init ──────────────────────────────────────────────────────
-app = Flask(__name__)
-CORS(app, origins=["null", "file://", "http://localhost:*", "http://127.0.0.1:*"])
+STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=None)
+CORS(app)
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 if not API_KEY:
@@ -57,6 +61,20 @@ AUTO_PROMPTS = {
         "or observation in 1–2 sentences for a teen chef."
     ),
 }
+
+
+# ── Static file serving ───────────────────────────────────────
+@app.route('/')
+def index():
+    return send_from_directory(STATIC_DIR, 'index.html')
+
+@app.route('/app.js')
+def app_js():
+    return send_from_directory(STATIC_DIR, 'app.js')
+
+@app.route('/cap.png')
+def cap_png():
+    return send_from_directory(STATIC_DIR, 'cap.png')
 
 
 def _system(age: str) -> str:
@@ -192,6 +210,14 @@ def chat():
 
 # ── Run ───────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n🤖  Cap backend is running — http://localhost:5000")
-    print("    Health check: http://localhost:5000/api/health\n")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    # Get LAN IP so the user knows what to open on iPad
+    try:
+        lan_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        lan_ip = "your-mac-ip"
+    print(f"\n🤖  Cap is running!")
+    print(f"    Local:  https://localhost:{port}")
+    print(f"    iPad:   https://{lan_ip}:{port}")
+    print(f"\n    ⚠️  First visit: tap 'Advanced' → 'Proceed' to accept the self-signed cert.\n")
+    app.run(host="0.0.0.0", port=port, debug=False, ssl_context="adhoc")
