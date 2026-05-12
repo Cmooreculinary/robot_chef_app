@@ -107,21 +107,10 @@
     <p class="text-blue-300 text-lg mb-1">Your Robot Chef Mentor</p>
     <p class="text-gray-500 text-sm mb-7">Live coaching while you cook — safe, fun, and encouraging.</p>
 
-    <!-- API Key -->
-    <div class="mb-5 text-left">
-      <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">
-        Gemini API Key <span class="text-gray-600 font-normal normal-case">(optional — enables live AI coaching)</span>
-      </label>
-      <div class="relative">
-        <input type="password" id="api-key-input"
-               placeholder="AIza…"
-               class="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600
-                      focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm pr-11"/>
-        <button onclick="toggleKeyVis()"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 text-base select-none"
-                title="Show/hide key">👁</button>
-      </div>
-      <p class="text-xs text-gray-600 mt-1.5">Key is stored only in your browser. Leave blank for offline safety guides.</p>
+    <!-- Backend status -->
+    <div class="mb-5 flex items-center justify-center gap-2 bg-gray-800/50 border border-gray-700/60 rounded-xl px-4 py-2.5">
+      <div id="backend-dot" class="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0"></div>
+      <span id="backend-label" class="text-xs text-gray-500">Checking backend…</span>
     </div>
 
     <!-- Age group -->
@@ -150,7 +139,7 @@
                    bg-gray-700 text-gray-500 cursor-not-allowed">
       Let's Cook! 👨‍🍳
     </button>
-    <p class="text-xs text-gray-700 mt-3">No API key? Cap uses built-in offline safety guides.</p>
+    <p class="text-xs text-gray-700 mt-3">No backend running? Cap uses built-in offline safety guides.</p>
   </div>
 </div>
 
@@ -447,11 +436,6 @@
 <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
   <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-80 shadow-2xl">
     <h3 class="text-lg font-bold text-white mb-4">Settings</h3>
-
-    <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Gemini API Key</label>
-    <input type="password" id="set-key"
-           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
-                  focus:outline-none focus:border-blue-500 mb-4"/>
 
     <label class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Age Group</label>
     <select id="set-age"

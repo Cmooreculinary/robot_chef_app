@@ -4,12 +4,11 @@
 
 // ── Config ────────────────────────────────────────────────────
 const CFG = {
-  LESSON_SECS:         30 * 60,   // 30 minutes
-  COOLDOWN_SECS:       15 * 60,   // 15 minutes
-  GEMINI_URL:          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-  CAPTURE_MS:          3000,      // camera frame interval
-  AUTO_GAP_MS:         8000,      // min gap between auto-feedback calls
-  MAX_HISTORY_TURNS:   8,         // conversation pairs kept for context
+  LESSON_SECS:    30 * 60,   // 30 minutes
+  COOLDOWN_SECS:  15 * 60,   // 15 minutes
+  BACKEND:        'http://localhost:5000',
+  CAPTURE_MS:     3000,      // camera frame interval
+  AUTO_GAP_MS:    8000,      // min gap between auto-feedback calls
 };
 
 // ── System prompts ────────────────────────────────────────────
@@ -87,10 +86,9 @@ const CHECKLISTS = {
 
 // ── App state ─────────────────────────────────────────────────
 const S = {
-  apiKey:       '',
   ageGroup:     null,         // 'kids' | 'teens'
   mode:         'setup',      // 'setup' | 'cooking' | 'cooldown' | 'care'
-  isOnline:     true,
+  isOnline:     true,         // false = backend unreachable, use offline fallback
   isThinking:   false,
   isSpeaking:   false,
   isMicOn:      false,
@@ -101,7 +99,7 @@ const S = {
   captureLoop:  null,
   lastAuto:     0,
   stream:       null,
-  history:      [],           // [{role, parts:[{text}]}]
+  history:      [],           // [{role, parts:[{text}]}] — managed server-side, mirrored here
   recognition:  null,
 };
 
@@ -109,23 +107,33 @@ const S = {
 // BOOT
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('cap_api_key');
-  if (saved) document.getElementById('api-key-input').value = saved;
-
   initPiP();
   initSpeechRecognition();
   spawnStars('cooldown-stars', 70);
   spawnStars('care-stars', 50);
+  checkBackend(); // probe server on load so the setup screen shows live status
 });
+
+async function checkBackend() {
+  const dot   = document.getElementById('backend-dot');
+  const label = document.getElementById('backend-label');
+  try {
+    const res = await fetch(`${CFG.BACKEND}/api/health`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      S.isOnline = true;
+      if (dot)   { dot.className   = 'w-2 h-2 rounded-full bg-green-400'; }
+      if (label) { label.textContent = 'Backend connected'; label.className = 'text-xs text-green-400'; }
+    } else { throw new Error('non-ok'); }
+  } catch {
+    S.isOnline = false;
+    if (dot)   { dot.className   = 'w-2 h-2 rounded-full bg-amber-400'; }
+    if (label) { label.textContent = 'Backend offline — using safety guides'; label.className = 'text-xs text-amber-400'; }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // SETUP
 // ─────────────────────────────────────────────────────────────
-function toggleKeyVis() {
-  const el = document.getElementById('api-key-input');
-  el.type = el.type === 'password' ? 'text' : 'password';
-}
-
 function selectAge(group) {
   S.ageGroup = group;
 
@@ -150,15 +158,10 @@ function selectAge(group) {
 }
 
 async function startApp() {
-  const key = document.getElementById('api-key-input').value.trim();
-  if (key) {
-    S.apiKey = key;
-    localStorage.setItem('cap_api_key', key);
-  } else {
-    S.isOnline = false;
-  }
-
   if (!S.ageGroup) return;
+
+  // Re-probe backend in case it came up after page load
+  await checkBackend();
 
   // Transition screens
   document.getElementById('setup-screen').classList.add('hidden');
@@ -167,16 +170,15 @@ async function startApp() {
 
   // Age badge
   const badge = document.getElementById('hdr-badge');
-  badge.textContent   = S.ageGroup === 'kids' ? 'Kids Mode (7–12) 👶' : 'Teen Mode (14+) 🧑‍🍳';
-  badge.className = `text-xs leading-tight ${S.ageGroup === 'kids' ? 'text-blue-400' : 'text-cyan-400'}`;
+  badge.textContent = S.ageGroup === 'kids' ? 'Kids Mode (7–12) 👶' : 'Teen Mode (14+) 🧑‍🍳';
+  badge.className   = `text-xs leading-tight ${S.ageGroup === 'kids' ? 'text-blue-400' : 'text-cyan-400'}`;
 
   applyModeUI();
   startLessonTimer();
 
   await requestCamera();
 
-  if (!S.isOnline || !S.apiKey) {
-    S.isOnline = false;
+  if (!S.isOnline) {
     applyModeUI();
     showOfflineChecklist();
   } else {
@@ -273,7 +275,7 @@ function endCooldown() {
   document.getElementById('timer-display').style.color = '';
   startLessonTimer();
 
-  if (S.isOnline && S.apiKey) startAutoCapture();
+  if (S.isOnline) startAutoCapture();
 
   const msg = "Welcome back! Kitchen's clean, hands are washed — let's keep cooking! 🍳 What are we tackling next?";
   addCapMsg(msg);
@@ -309,7 +311,7 @@ function toggleCamera() {
     stopAutoCapture();
   } else {
     requestCamera().then(ok => {
-      if (ok && S.isOnline && S.apiKey && S.mode === 'cooking') startAutoCapture();
+      if (ok && S.isOnline && S.mode === 'cooking') startAutoCapture();
     });
   }
 }
@@ -350,67 +352,52 @@ async function doAutoFeedback() {
 
   setThinking(true);
   try {
-    const reply = await callGemini(prompt, frame, false);
+    const reply = await callVision(frame);
     setThinking(false);
     if (reply) { showBubble(reply); speak(reply); }
   } catch (e) {
     setThinking(false);
-    // Silent failure — mode switches on next user message
+    // Silent failure on auto-feedback — backend status caught on next user message
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// GEMINI 2.0 FLASH API
+// BACKEND API CALLS
 // ─────────────────────────────────────────────────────────────
-async function callGemini(userText, frameB64 = null, updateHistory = true) {
-  if (!S.apiKey) throw new Error('No API key');
 
-  // Build the user parts for this turn
-  const userParts = [];
-  if (frameB64) userParts.push({ inlineData: { mimeType: 'image/jpeg', data: frameB64 } });
-  userParts.push({ text: userText });
+/** Auto-vision: fire-and-forget frame analysis, no history update */
+async function callVision(frameB64) {
+  const res = await fetch(`${CFG.BACKEND}/api/coach/vision`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ image: frameB64, age: S.ageGroup }),
+  });
+  if (!res.ok) throw new Error(`vision HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.reply;
+}
 
-  // History is text-only (no base64 blobs in prior turns — keeps token cost down)
-  const contents = [
-    ...S.history,
-    { role: 'user', parts: userParts },
-  ];
-
+/** Chat: user message + optional frame, updates S.history from server response */
+async function callChat(userText, frameB64 = null) {
   const body = {
-    system_instruction: { parts: [{ text: PROMPTS[S.ageGroup] }] },
-    contents,
-    generationConfig: {
-      maxOutputTokens: 180,
-      temperature:     0.78,
-      topP:            0.92,
-    },
+    message: userText,
+    age:     S.ageGroup,
+    history: S.history,
   };
+  if (frameB64) body.image = frameB64;
 
-  const res = await fetch(`${CFG.GEMINI_URL}?key=${S.apiKey}`, {
+  const res = await fetch(`${CFG.BACKEND}/api/coach/chat`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `HTTP ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(`chat HTTP ${res.status}`);
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response');
+  if (data.error) throw new Error(data.error);
 
-  // Update rolling history (text parts only)
-  if (updateHistory) {
-    S.history.push({ role: 'user',  parts: [{ text: userText }] });
-    S.history.push({ role: 'model', parts: [{ text }] });
-    // Trim to MAX_HISTORY_TURNS pairs
-    const limit = CFG.MAX_HISTORY_TURNS * 2;
-    if (S.history.length > limit) S.history = S.history.slice(-limit);
-  }
-
-  return text;
+  S.history = data.history || S.history; // server manages history trimming
+  return data.reply;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -441,15 +428,15 @@ async function handleOnlineMsg(text) {
   const frame = S.stream ? grabFrame() : null;
 
   try {
-    const reply = await callGemini(text, frame, true);
+    const reply = await callChat(text, frame);
     setThinking(false);
     addCapMsg(reply);
     speak(reply);
   } catch (e) {
     setThinking(false);
-    console.error('Gemini error:', e.message);
+    console.error('Backend error:', e.message);
 
-    // Auto-fall to offline
+    // Auto-fall to offline if backend is unreachable
     S.isOnline = false;
     applyModeUI();
     showOfflineChecklist();
@@ -459,7 +446,7 @@ async function handleOnlineMsg(text) {
     speak(fb);
   }
 
-  if (S.isOnline && S.apiKey && S.mode === 'cooking') {
+  if (S.isOnline && S.mode === 'cooking') {
     setTimeout(startAutoCapture, 5000);
   }
 }
@@ -516,7 +503,7 @@ function returnFromCare() {
   document.getElementById('care-overlay').classList.add('hidden');
   stopSpeech();
   S.mode = 'cooking';
-  if (S.isOnline && S.apiKey) startAutoCapture();
+  if (S.isOnline) startAutoCapture();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -526,19 +513,19 @@ function toggleMode() {
   S.isOnline = !S.isOnline;
   applyModeUI();
 
-  if (S.isOnline && S.apiKey) {
+  if (S.isOnline) {
     document.getElementById('offline-panel').classList.add('hidden');
     startAutoCapture();
     addCapMsg("Back online! I can see your kitchen again. Let's go! 🎯");
   } else {
     stopAutoCapture();
     showOfflineChecklist();
-    addCapMsg("Switched to offline mode. I'll use my built-in safety guides to help you.", false);
+    addCapMsg("Switched to offline mode. I'll use my built-in safety guides to help you.");
   }
 }
 
 function applyModeUI() {
-  const online = S.isOnline && !!S.apiKey;
+  const online = S.isOnline;
   const toggle = document.getElementById('mode-toggle');
   const thumb  = document.getElementById('mode-thumb');
   const label  = document.getElementById('mode-label');
@@ -762,22 +749,14 @@ function closeSettings() {
 }
 
 function saveSettings() {
-  const key = document.getElementById('set-key').value.trim();
   const age = document.getElementById('set-age').value;
-
-  if (key) { S.apiKey = key; localStorage.setItem('cap_api_key', key); }
 
   if (age !== S.ageGroup) {
     S.ageGroup = age;
-    S.history  = [];   // reset context on age switch
-    document.getElementById('hdr-badge').textContent =
-      age === 'kids' ? 'Kids Mode (7–12) 👶' : 'Teen Mode (14+) 🧑‍🍳';
-  }
-
-  if (S.apiKey && !S.isOnline) {
-    S.isOnline = true;
-    applyModeUI();
-    if (S.mode === 'cooking') startAutoCapture();
+    S.history  = [];   // reset conversation context on age switch
+    const badge = document.getElementById('hdr-badge');
+    badge.textContent = age === 'kids' ? 'Kids Mode (7–12) 👶' : 'Teen Mode (14+) 🧑‍🍳';
+    badge.className   = `text-xs leading-tight ${age === 'kids' ? 'text-blue-400' : 'text-cyan-400'}`;
   }
 
   closeSettings();
