@@ -6,7 +6,8 @@
 const CFG = {
   LESSON_SECS:    30 * 60,   // 30 minutes
   COOLDOWN_SECS:  15 * 60,   // 15 minutes
-  BACKEND:        'http://localhost:5000',
+  // Empty string = same-origin (Render).  file:// = hit local Flask server.
+  BACKEND: window.location.protocol === 'file:' ? 'http://localhost:5000' : '',
   CAPTURE_MS:     3000,      // camera frame interval
   AUTO_GAP_MS:    8000,      // min gap between auto-feedback calls
 };
