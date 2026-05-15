@@ -112,7 +112,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initSpeechRecognition();
   spawnStars('cooldown-stars', 70);
   spawnStars('care-stars', 50);
-  checkBackend(); // probe server on load so the setup screen shows live status
+  checkBackend();
+
+  // Cap leans in attentively whenever the user is typing
+  const input = document.getElementById('user-input');
+  input.addEventListener('focus', () => { if (!S.isThinking && !S.isSpeaking && S.mode === 'cooking') setCapState('listening'); });
+  input.addEventListener('blur',  () => { if (!S.isThinking && !S.isSpeaking) setCapState('idle'); });
+  input.addEventListener('input', () => { if (!S.isThinking && !S.isSpeaking && S.mode === 'cooking') setCapState('listening'); });
 });
 
 async function checkBackend() {
@@ -192,6 +198,8 @@ async function startApp() {
     teens: "Welcome to the kitchen, chef. I'm Cap — your AI sous chef. 🤖 Tell me what dish you're working on and I'll coach you through it step by step.",
   };
   addCapMsg(welcome[S.ageGroup]);
+  setCapState('greeting');
+  setTimeout(() => { if (!S.isThinking && !S.isSpeaking) setCapState('idle'); }, 3800);
   speak(welcome[S.ageGroup]);
 }
 
@@ -280,6 +288,8 @@ function endCooldown() {
 
   const msg = "Welcome back! Kitchen's clean, hands are washed — let's keep cooking! 🍳 What are we tackling next?";
   addCapMsg(msg);
+  setCapState('greeting');
+  setTimeout(() => { if (!S.isThinking && !S.isSpeaking) setCapState('idle'); }, 3800);
   speak("Welcome back, chef! Let's keep cooking!");
 }
 
@@ -613,27 +623,34 @@ function showBubble(text) {
 
 function setThinking(on) {
   S.isThinking = on;
-  const img    = document.getElementById('cap-img');
-  const fb     = document.getElementById('cap-fb');
-  const typer  = document.getElementById('typing-ind');
-  const dot    = document.getElementById('status-dot');
-  const txt    = document.getElementById('status-text');
-  const glow   = document.getElementById('cap-glow');
+  const typer = document.getElementById('typing-ind');
+  const dot   = document.getElementById('status-dot');
+  const txt   = document.getElementById('status-text');
 
   if (on) {
-    img.classList.replace('cap-idle','cap-thinking');
-    fb.classList.replace('cap-idle','cap-thinking');
+    setCapState('thinking');
     typer.classList.remove('hidden');
-    dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0';
+    dot.className   = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0';
     txt.textContent = 'Thinking…';
-    glow.style.opacity = '1';
   } else {
-    img.classList.replace('cap-thinking','cap-idle');
-    fb.classList.replace('cap-thinking','cap-idle');
+    setCapState(S.isSpeaking ? 'speaking' : 'idle');
     typer.classList.add('hidden');
-    dot.className = 'w-2 h-2 rounded-full bg-green-400 flex-shrink-0';
+    dot.className   = 'w-2 h-2 rounded-full bg-green-400 flex-shrink-0';
     txt.textContent = S.stream ? 'Watching kitchen' : 'Ready to help!';
-    glow.style.opacity = '0';
+  }
+}
+
+// ── Central animation driver ──────────────────────────────────
+// states: 'idle' | 'listening' | 'thinking' | 'speaking' | 'greeting'
+function setCapState(state) {
+  const ALL = ['cap-idle','cap-listening','cap-thinking','cap-speaking','cap-greeting'];
+  [document.getElementById('cap-img'), document.getElementById('cap-fb')]
+    .filter(Boolean)
+    .forEach(el => { el.classList.remove(...ALL); el.classList.add('cap-' + state); });
+
+  const glow = document.getElementById('cap-glow');
+  if (glow) {
+    glow.style.opacity = { idle:'0', listening:'.45', thinking:'.8', speaking:'1', greeting:'.85' }[state] ?? '0';
   }
 }
 
@@ -664,19 +681,17 @@ function speak(text, priority = false) {
 
   utt.onstart = () => {
     S.isSpeaking = true;
-    document.getElementById('cap-img').classList.replace('cap-idle','cap-thinking');
-    document.getElementById('status-dot').className  = 'w-2 h-2 rounded-full bg-cyan-400 animate-pulse flex-shrink-0';
+    setCapState('speaking');
+    document.getElementById('status-dot').className    = 'w-2 h-2 rounded-full bg-cyan-400 animate-pulse flex-shrink-0';
     document.getElementById('status-text').textContent = 'Speaking…';
-    document.getElementById('cap-glow').style.opacity  = '1';
   };
 
   utt.onend = utt.onerror = () => {
     S.isSpeaking = false;
     if (!S.isThinking) {
-      document.getElementById('cap-img').classList.replace('cap-thinking','cap-idle');
-      document.getElementById('status-dot').className   = 'w-2 h-2 rounded-full bg-green-400 flex-shrink-0';
+      setCapState('idle');
+      document.getElementById('status-dot').className    = 'w-2 h-2 rounded-full bg-green-400 flex-shrink-0';
       document.getElementById('status-text').textContent = S.stream ? 'Watching kitchen' : 'Ready to help!';
-      document.getElementById('cap-glow').style.opacity  = '0';
     }
   };
 
@@ -720,6 +735,7 @@ function toggleMic() {
 function micOn() {
   S.isMicOn = true;
   stopSpeech();
+  setCapState('listening');
   const btn = document.getElementById('mic-btn');
   btn.classList.add('mic-active');
   btn.title = 'Listening… click to stop';
@@ -729,6 +745,7 @@ function micOn() {
 
 function micOff() {
   S.isMicOn = false;
+  if (!S.isThinking && !S.isSpeaking) setCapState('idle');
   const btn = document.getElementById('mic-btn');
   btn.classList.remove('mic-active');
   btn.title = 'Voice input';
