@@ -118,14 +118,17 @@
 
   <div class="w-full max-w-md px-6 text-center">
 
-    <!-- Cap avatar -->
-    <div class="flex justify-center mb-5">
-      <div class="relative w-28 h-28">
+    <!-- Cap hero image -->
+    <div class="flex justify-center mb-6">
+      <div class="relative">
+        <!-- Glow ring behind Cap -->
+        <div class="absolute inset-0 rounded-full"
+             style="background: radial-gradient(circle, rgba(59,130,246,.35) 0%, transparent 70%); transform: scale(1.15)"></div>
         <img src="cap.png" alt="Cap"
-             class="w-full h-full object-contain cap-idle rounded-full"
+             class="relative w-56 h-56 object-contain cap-idle drop-shadow-2xl"
              onerror="this.style.display='none';document.getElementById('setup-cap-fb').style.display='flex'">
         <div id="setup-cap-fb"
-             class="w-full h-full items-center justify-center text-7xl cap-idle"
+             class="w-56 h-56 items-center justify-center text-9xl cap-idle"
              style="display:none">🤖</div>
       </div>
     </div>
