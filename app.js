@@ -425,7 +425,7 @@ async function sendMessage() {
   // Care pathway takes priority
   if (hitsCareKeyword(text)) { triggerCare(text); return; }
 
-  if (S.isOnline && S.apiKey) {
+  if (S.isOnline) {
     await handleOnlineMsg(text);
   } else {
     handleOfflineMsg(text);
@@ -757,7 +757,6 @@ function micOff() {
 // SETTINGS
 // ─────────────────────────────────────────────────────────────
 function showSettings() {
-  document.getElementById('set-key').value = S.apiKey;
   document.getElementById('set-age').value = S.ageGroup || 'kids';
   document.getElementById('settings-modal').classList.remove('hidden');
 }
