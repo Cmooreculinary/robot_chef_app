@@ -41,13 +41,13 @@ const LOGO_URL =
 // Diverse kid portraits — illustrated in the AWANA explainer style.
 // Each avatar gets one of AWANA's four game-circle colors as its ring.
 const KIDS = [
-  { src: "/illustrations/kid_portrait_1.png", color: "cck-kid-yellow", alt: "Curious young chef with a warm smile" },
-  { src: "/illustrations/kid_portrait_2.png", color: "cck-kid-blue",   alt: "Confident young chef ready to cook" },
-  { src: "/illustrations/kid_portrait_3.png", color: "cck-kid-green",  alt: "Thoughtful young chef with apron" },
-  { src: "/illustrations/kid_portrait_4.png", color: "cck-kid-red",    alt: "Joyful young chef beaming a smile" },
-  { src: "/illustrations/kid_portrait_5.png", color: "cck-kid-yellow", alt: "Calm young chef looking ahead" },
+  { src: "/illustrations/kid_portrait_1.webp", color: "cck-kid-yellow", alt: "Curious young chef with a warm smile" },
+  { src: "/illustrations/kid_portrait_2.webp", color: "cck-kid-blue",   alt: "Confident young chef ready to cook" },
+  { src: "/illustrations/kid_portrait_3.webp", color: "cck-kid-green",  alt: "Thoughtful young chef with apron" },
+  { src: "/illustrations/kid_portrait_4.webp", color: "cck-kid-red",    alt: "Joyful young chef beaming a smile" },
+  { src: "/illustrations/kid_portrait_5.webp", color: "cck-kid-yellow", alt: "Calm young chef looking ahead" },
 ];
-const KIDS_GROUP_IMG = "/illustrations/kids_group_cooking.png";
+const KIDS_GROUP_IMG = "/illustrations/kids_group_cooking.webp";
 
 const NAV_ITEMS = [
   { id: "mission", label: "Mission" },

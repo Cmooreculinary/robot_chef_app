@@ -322,10 +322,14 @@ async def list_restaurants(session_id: str):
 
 app.include_router(api_router)
 
+# CORS: comma-separated origins in CORS_ORIGINS env var.
+# Production must list explicit origins (not "*") when allow_credentials=True.
+_cors_raw = os.environ.get('CORS_ORIGINS', '*')
+_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
