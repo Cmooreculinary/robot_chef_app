@@ -1,13 +1,23 @@
-// GeminiLive — captures screen + microphone so Cap can see what you're doing
+// GeminiLive — screen + mic capture streamed to Gemini Multimodal Live API
 (function () {
-  let capturing = false;
-  let minimized = false;
-  let screenStream = null;
-  let micStream = null;
-  let audioCtx = null;
-  let animFrame = null;
+  const WS_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
+  const MODEL       = 'models/gemini-2.5-flash';
+  const VIDEO_FPS   = 1; // screen frames per second sent to the API
 
-  // ── Build DOM ────────────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────────────────
+  let capturing       = false;
+  let minimized       = false;
+  let screenStream    = null;
+  let micStream       = null;
+  let meterAudioCtx   = null; // native-rate ctx for the level-meter UI
+  let streamAudioCtx  = null; // 16 kHz ctx for PCM chunks sent to Gemini
+  let scriptProcessor = null;
+  let animFrame       = null;
+  let videoInterval   = null;
+  let ws              = null;
+  let wsReady         = false;
+
+  // ── Build DOM ──────────────────────────────────────────────────────────────
 
   const panel = document.createElement('div');
   Object.assign(panel.style, {
@@ -44,7 +54,15 @@
     display: 'none',
   });
 
-  headerLeft.append(headerIcon, headerTitle, liveBadge);
+  // WebSocket status dot
+  const wsDot = document.createElement('span');
+  wsDot.title = 'WebSocket: disconnected';
+  Object.assign(wsDot.style, {
+    width: '7px', height: '7px', borderRadius: '50%',
+    background: '#4b5563', display: 'inline-block', transition: 'background 300ms',
+  });
+
+  headerLeft.append(headerIcon, headerTitle, liveBadge, wsDot);
 
   const toggleBtn = document.createElement('button');
   toggleBtn.textContent = '▼';
@@ -85,7 +103,7 @@
 
   previewWrap.append(video, placeholder);
 
-  // Mic level
+  // Mic level bar
   const micRow = document.createElement('div');
   Object.assign(micRow.style, { display: 'flex', alignItems: 'center', gap: '0.5rem' });
 
@@ -111,12 +129,22 @@
 
   micRow.append(micIcon, micTrack, micLabel);
 
-  // Error box (hidden by default)
+  // Error box
   const errorBox = document.createElement('div');
   Object.assign(errorBox.style, {
     background: 'rgba(153,27,27,.3)', border: '1px solid #7f1d1d',
     borderRadius: '0.5rem', padding: '0.4rem 0.6rem',
     color: '#fca5a5', fontSize: '0.72rem', display: 'none',
+  });
+
+  // Model response box
+  const responseBox = document.createElement('div');
+  Object.assign(responseBox.style, {
+    background: '#1f2937', border: '1px solid #374151',
+    borderRadius: '0.5rem', padding: '0.4rem 0.6rem',
+    color: '#d1d5db', fontSize: '0.72rem', lineHeight: '1.45',
+    maxHeight: '80px', overflowY: 'auto',
+    whiteSpace: 'pre-wrap', display: 'none',
   });
 
   // Control button
@@ -132,11 +160,31 @@
   hint.textContent = 'Your browser will ask for screen & microphone permission.';
   Object.assign(hint.style, { color: '#4b5563', fontSize: '0.65rem', textAlign: 'center', margin: '0' });
 
-  body.append(previewWrap, micRow, errorBox, ctrlBtn, hint);
+  body.append(previewWrap, micRow, errorBox, responseBox, ctrlBtn, hint);
   panel.append(header, body);
   document.body.appendChild(panel);
 
-  // ── State helpers ────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function float32ToInt16(f32) {
+    const out = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return out;
+  }
+
+  // Chunk-based to avoid call-stack overflow on large buffers
+  function bufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const CHUNK = 0x8000;
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+  }
 
   function setAudioLevel(level) {
     micFill.style.width = level + '%';
@@ -158,21 +206,102 @@
     errorBox.style.display = msg ? 'block' : 'none';
   }
 
-  // ── Capture logic ────────────────────────────────────────────────────────
+  function setWsDot(state) {
+    const colors = { off: '#4b5563', connecting: '#f59e0b', on: '#22c55e', error: '#ef4444' };
+    const labels = { off: 'disconnected', connecting: 'connecting…', on: 'connected', error: 'error' };
+    wsDot.style.background = colors[state] ?? colors.off;
+    wsDot.title = 'WebSocket: ' + (labels[state] ?? state);
+  }
+
+  function appendResponse(text) {
+    responseBox.style.display = 'block';
+    responseBox.textContent += text;
+    responseBox.scrollTop = responseBox.scrollHeight;
+  }
+
+  // ── Streaming (started after WS setup handshake completes) ────────────────
+
+  function startStreaming() {
+    // Audio — 16-bit signed PCM @ 16 kHz mono
+    streamAudioCtx = new AudioContext({ sampleRate: 16000 });
+    const src = streamAudioCtx.createMediaStreamSource(micStream);
+    scriptProcessor = streamAudioCtx.createScriptProcessor(4096, 1, 1);
+
+    scriptProcessor.onaudioprocess = (e) => {
+      if (!wsReady || !ws || ws.readyState !== WebSocket.OPEN) return;
+      const pcm = float32ToInt16(e.inputBuffer.getChannelData(0));
+      ws.send(JSON.stringify({
+        realtimeInput: {
+          mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: bufferToBase64(pcm.buffer) }],
+        },
+      }));
+    };
+
+    src.connect(scriptProcessor);
+    scriptProcessor.connect(streamAudioCtx.destination);
+
+    // Video — JPEG frames at VIDEO_FPS
+    const canvas = document.createElement('canvas');
+    canvas.width  = 640;
+    canvas.height = 360;
+    const ctx2d = canvas.getContext('2d');
+
+    videoInterval = setInterval(() => {
+      if (!wsReady || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (!video.videoWidth) return;
+      ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (!wsReady || !ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{ mimeType: 'image/jpeg', data: reader.result.split(',')[1] }],
+            },
+          }));
+        };
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', 0.7);
+    }, 1000 / VIDEO_FPS);
+  }
+
+  // ── Stop ──────────────────────────────────────────────────────────────────
 
   function stopCapture() {
-    if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
-    if (micStream)    { micStream.getTracks().forEach(t => t.stop());    micStream = null; }
-    if (animFrame)    { cancelAnimationFrame(animFrame); animFrame = null; }
-    if (audioCtx)     { audioCtx.close(); audioCtx = null; }
+    if (screenStream)    { screenStream.getTracks().forEach(t => t.stop());    screenStream = null; }
+    if (micStream)       { micStream.getTracks().forEach(t => t.stop());       micStream = null; }
+    if (animFrame)       { cancelAnimationFrame(animFrame);                    animFrame = null; }
+    if (meterAudioCtx)   { meterAudioCtx.close();                             meterAudioCtx = null; }
+    if (scriptProcessor) { scriptProcessor.disconnect();                       scriptProcessor = null; }
+    if (streamAudioCtx)  { streamAudioCtx.close();                            streamAudioCtx = null; }
+    if (videoInterval)   { clearInterval(videoInterval);                      videoInterval = null; }
+    if (ws)              { ws.close();                                         ws = null; }
     video.srcObject = null;
+    wsReady = false;
     setAudioLevel(0);
+    setWsDot('off');
     setCapturingState(false);
   }
 
+  // ── Start ─────────────────────────────────────────────────────────────────
+
   async function startCapture() {
+    // 1. API key — read from sessionStorage or prompt the user
+    let apiKey = sessionStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+      apiKey = window.prompt('Enter your Google AI Studio API key:');
+      if (!apiKey || !apiKey.trim()) return;
+      sessionStorage.setItem('gemini_api_key', apiKey.trim());
+    }
+    apiKey = apiKey.trim();
+
     showError('');
+    responseBox.textContent = '';
+    responseBox.style.display = 'none';
+
     try {
+      // 2. Acquire screen + mic streams
       screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: 'always', frameRate: 15 },
         audio: false,
@@ -185,32 +314,77 @@
 
       video.srcObject = screenStream;
 
-      // Audio level meter
-      audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(micStream);
-      const analyser = audioCtx.createAnalyser();
+      // 3. Level-meter (native sample rate, display only)
+      meterAudioCtx = new AudioContext();
+      const meterSrc = meterAudioCtx.createMediaStreamSource(micStream);
+      const analyser = meterAudioCtx.createAnalyser();
       analyser.fftSize = 256;
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
+      meterSrc.connect(analyser);
+      const meterData = new Uint8Array(analyser.frequencyBinCount);
       function tick() {
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((s, v) => s + v, 0) / data.length;
+        analyser.getByteFrequencyData(meterData);
+        const avg = meterData.reduce((s, v) => s + v, 0) / meterData.length;
         setAudioLevel(Math.min(100, avg * 2.2));
         animFrame = requestAnimationFrame(tick);
       }
       tick();
 
-      // Stop if user dismisses the browser screen-share picker
       screenStream.getVideoTracks()[0].addEventListener('ended', stopCapture);
-
       setCapturingState(true);
+
+      // 4. Open WebSocket to Gemini Multimodal Live API
+      setWsDot('connecting');
+      ws = new WebSocket(`${WS_ENDPOINT}?key=${encodeURIComponent(apiKey)}`);
+
+      ws.onopen = () => {
+        // Send the setup message; streaming begins once the server ACKs with setupComplete
+        ws.send(JSON.stringify({
+          setup: {
+            model: MODEL,
+            generationConfig: { responseModalities: ['TEXT'] },
+          },
+        }));
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+
+        if (msg.setupComplete) {
+          wsReady = true;
+          setWsDot('on');
+          startStreaming();
+          return;
+        }
+
+        // Accumulate text from model turns
+        const parts = msg.serverContent?.modelTurn?.parts ?? [];
+        parts.forEach((p) => { if (p.text) appendResponse(p.text); });
+      };
+
+      ws.onerror = () => {
+        setWsDot('error');
+        showError('WebSocket error — check your API key and try again.');
+        stopCapture();
+      };
+
+      ws.onclose = (evt) => {
+        wsReady = false;
+        if (evt.code !== 1000 && capturing) {
+          setWsDot('error');
+          showError(`Connection closed (code ${evt.code}).`);
+        } else {
+          setWsDot('off');
+        }
+      };
+
     } catch (err) {
       stopCapture();
       showError(err.message || 'Permission denied or cancelled.');
     }
   }
 
-  // ── Event listeners ──────────────────────────────────────────────────────
+  // ── Event listeners ────────────────────────────────────────────────────────
 
   ctrlBtn.addEventListener('click', () => capturing ? stopCapture() : startCapture());
 
