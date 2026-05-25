@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).parent
 FRONTEND_BUILD = BASE_DIR / "frontend" / "build"
 
 app = Flask(__name__, static_folder=str(FRONTEND_BUILD), static_url_path="")
-CORS(app, origins=["null", "file://", "http://localhost:*", "http://127.0.0.1:*"])
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 MODEL = "gemini-2.0-flash"
 DB_PATH = BASE_DIR / "culinary_chef.db"
