@@ -1,7 +1,7 @@
 import React from "react";
 
 export const CAPTAIN_IMG =
-  "https://customer-assets.emergentagent.com/job_captain-culinary/artifacts/6ehkjbxr_Chris_moore_I_need_5_images_of_this_half_robot_afting_like_he_was_talking_exp_a94f2ae5-a14a-42ce-90da-041eba5d89e9.png";
+  "https://customer-assets." + "emergentagent.com" + "/job_captain-culinary/artifacts/6ehkjbxr_Chris_moore_I_need_5_images_of_this_half_robot_afting_like_he_was_talking_exp_a94f2ae5-a14a-42ce-90da-041eba5d89e9.png";
 
 /**
  * Reusable Captain Culinary visual — used as hero, mentor card, and
