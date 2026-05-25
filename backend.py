@@ -1,216 +1,180 @@
-"""
-Cap — Robot Chef Mentor | backend.py
-
-Local:  python backend.py   (http://localhost:5000)
-Render: gunicorn backend:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
-"""
-
 import os
 import base64
+import sqlite3
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
-# ── Init ──────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
-app = Flask(__name__, static_folder=None)
+# Correctly point static assets to the React build output folder
+FRONTEND_BUILD = BASE_DIR / "frontend" / "build"
 
-# CORS only needed when the frontend is opened as file:// locally.
-# When served by Flask itself (Render / python backend.py) requests are same-origin.
+app = Flask(__name__, static_folder=str(FRONTEND_BUILD), static_url_path="")
 CORS(app, origins=["null", "file://", "http://localhost:*", "http://127.0.0.1:*"])
 
 MODEL = "gemini-2.0-flash"
+DB_PATH = BASE_DIR / "culinary_chef.db"
 
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT, age_group TEXT DEFAULT "apprentice")')
+    cursor.execute('CREATE TABLE IF NOT EXISTS chat_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, role TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)')
+    conn.commit()
+    conn.close()
 
-def _api_key() -> str:
-    """Return the API key or raise a clean 503 — checked per-request so the
-    health endpoint and static files still work before the key is configured."""
+init_db()
+
+def _get_client():
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise EnvironmentError("GEMINI_API_KEY is not set")
-    return key
+    return genai.Client(api_key=key)
 
-
-# ── System prompts ────────────────────────────────────────────
 SYSTEM_PROMPTS = {
-    "kids": (
-        "You are Cap, a friendly Robot Chef mentor for kids aged 7–12. "
-        "Personality: warm, patient, wildly encouraging, safety-obsessed, uses simple everyday words. "
-        "Teaching focus: kitchen safety rules first, ingredient identification, "
-        "simple prep (washing, tearing, stirring, measuring). "
-        "Format: MAX 2–3 sentences. End with a cheer or positive reinforcement. "
-        "Camera images: briefly note one thing you see, then give ONE safety tip or observation. "
-        'Never suggest knives, open flames, or raw meat without explicitly saying "ask a grown-up first!".'
+    "apprentice": (
+        "You are Cap, an AI robot chef mentor. Mouthless, benevolent, warm, patient, and deeply knowledgeable. "
+        "Your pedagogical style is that of a CIA-trained chef with 40 years of professional experience tracking an apprentice. "
+        "Target: Kids aged 10–12. Focus on knife skills, basic technique, simple recipes, and kitchen safety. "
+        "Be present and supervisory, but never condescend, use baby talk, or assume failure. Keep culinary vocabulary real "
+        "(e.g., mirepoix, mise en place). End responses by offering self-paced control: 'Ready to keep going, or do you have a question?'"
     ),
-    "teens": (
-        "You are Cap, a knowledgeable Robot Chef mentor for teens aged 14+. "
-        "Personality: practical, respectful, treats them as capable young chefs, passionate about global flavors. "
-        "Teaching focus: global cuisines and flavor science, knife technique (with safety), "
-        "restaurant-style mise en place, plating. "
-        "Format: 3–4 sentences max. Use real culinary vocabulary they can grow into. "
-        "Camera images: give specific technical feedback on technique, setup, or efficiency. "
-        "Mention safety for hot/sharp tools but treat them as independent and capable."
+    "cook": (
+        "You are Cap, an AI robot chef mentor with the pedigree of a CIA-trained veteran of 40 years. "
+        "Target: Teens aged 13–15. Focus on full meals, baking, hot prep, and station management. "
+        "Pull back slightly compared to the apprentice level—ask more diagnostic questions to encourage independent critical thinking. "
+        "Honor them as capable learners. Vocabulary is strictly professional. End responses inviting their direction."
     ),
+    "operator": (
+        "You are Cap, acting as a peer-mentor culinary veteran to older teens aged 16–18. "
+        "Focus: Pop-ups, food trucks, restaurant simulations, kitchen management, business, and ingredient costing. "
+        "Treat them completely as young industry professionals. Speak with precise technical accuracy and strategic business mindset."
+    )
 }
 
 AUTO_PROMPTS = {
-    "kids": (
-        "Look at this kitchen scene. Give one quick, friendly safety tip or "
-        "encouraging comment in 1–2 sentences for a child."
-    ),
-    "teens": (
-        "Look at this cooking scene. Give one brief, specific technical tip "
-        "or observation in 1–2 sentences for a teen chef."
-    ),
+    "apprentice": "Look at this kitchen scene. Give a precise, professional safety tip or observation regarding technique or mise en place for a 10-12 year old apprentice.",
+    "cook": "Look at this cooking setup. Provide professional feedback on station management or preparation technique for a 13-15 year old cook.",
+    "operator": "Look at this culinary scenario. Provide high-level professional feedback regarding efficiency, presentation, or operational execution."
 }
 
-
-def _system(age: str) -> str:
-    return SYSTEM_PROMPTS.get(age, SYSTEM_PROMPTS["kids"])
-
-
-def _decode_frame(b64_string: str) -> bytes:
+def _decode_frame(b64_string):
     if "," in b64_string:
         b64_string = b64_string.split(",", 1)[1]
     return base64.b64decode(b64_string)
 
-
-# ── Static frontend files ─────────────────────────────────────
+# Main route serves the built React frontend
 @app.route("/")
 def index():
-    return send_from_directory(BASE_DIR, "index.html")
+    return send_from_directory(FRONTEND_BUILD, "index.html")
 
-
-@app.route("/app.js")
-def frontend_js():
-    return send_from_directory(BASE_DIR, "app.js")
-
-
-@app.route("/cap.png")
-def cap_image():
-    if (BASE_DIR / "cap.png").exists():
-        return send_from_directory(BASE_DIR, "cap.png")
-    return "", 404
-
-
-# ── Health check ──────────────────────────────────────────────
 @app.route("/api/health")
 def health():
     key_set = bool(os.environ.get("GEMINI_API_KEY", "").strip())
-    return jsonify({"status": "ok", "model": MODEL, "key_configured": key_set})
+    return jsonify({"status": "ok", "model": MODEL, "key_configured": key_set, "database": "sqlite_connected", "sdk": "modern_v1"})
 
-
-# ── Auto-vision endpoint ──────────────────────────────────────
 @app.route("/api/coach/vision", methods=["POST"])
 def vision():
-    """Body: { image: <base64 jpeg>, age: "kids"|"teens" }"""
-    data    = request.get_json(force=True)
-    age     = data.get("age", "kids")
+    data = request.get_json(force=True)
+    age = data.get("age", "apprentice")
     img_b64 = data.get("image", "")
-
-    if not img_b64:
-        return jsonify({"error": "No image provided"}), 400
-
+    if not img_b64: return jsonify({"error": "No image provided"}), 400
     try:
-        key = _api_key()
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(
-            model_name=MODEL,
-            system_instruction=_system(age),
-        )
-        response = model.generate_content(
-            [
-                {"mime_type": "image/jpeg", "data": _decode_frame(img_b64)},
-                AUTO_PROMPTS.get(age, AUTO_PROMPTS["kids"]),
-            ],
-            generation_config=genai.GenerationConfig(
-                max_output_tokens=120,
-                temperature=0.75,
-            ),
+        client = _get_client()
+        image_part = types.Part.from_bytes(data=_decode_frame(img_b64), mime_type="image/jpeg")
+        
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=[image_part, AUTO_PROMPTS.get(age, AUTO_PROMPTS["apprentice"])],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPTS.get(age, SYSTEM_PROMPTS["apprentice"]),
+                max_output_tokens=150,
+                temperature=0.7
+            )
         )
         return jsonify({"reply": response.text})
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
-    except EnvironmentError as e:
-        return jsonify({"error": str(e)}), 503
-    except Exception as e:
-        app.logger.error("vision error: %s", e)
-        return jsonify({"error": str(e)}), 500
-
-
-# ── Chat endpoint ─────────────────────────────────────────────
 @app.route("/api/coach/chat", methods=["POST"])
 def chat():
-    """
-    Body: { message, age, history?: [{role, parts:[{text}]}], image?: <base64> }
-    Returns: { reply, history }
-    """
-    data    = request.get_json(force=True)
-    age     = data.get("age", "kids")
+    data = request.get_json(force=True)
+    age = data.get("age", "apprentice")
     message = data.get("message", "").strip()
-    history = data.get("history", [])
+    user_id = data.get("user_id", "default_chef")
     img_b64 = data.get("image")
-
-    if not message:
-        return jsonify({"error": "No message provided"}), 400
-
+    if not message: return jsonify({"error": "No message provided"}), 400
+    
     try:
-        key = _api_key()
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(
-            model_name=MODEL,
-            system_instruction=_system(age),
+        client = _get_client()
+
+        # 🛡️ Dual-Path Intent Classification Layer
+        router_prompt = (
+            "You are an Intent and Risk Router for a child-facing cooking platform. "
+            "Analyze the user message. If it contains language indicating prayer, grief, death, severe fear, "
+            "pastoral prompts, or spiritual distress, output exactly the word 'PATHWAY'. "
+            "Otherwise, output exactly the word 'TEACHING'. Do not include any other text.\n\n"
+            f"User message: {message}"
         )
+        
+        route_decision = client.models.generate_content(
+            model=MODEL,
+            contents=router_prompt
+        ).text.strip().upper()
 
-        sdk_history = []
-        for turn in history:
-            role  = turn.get("role")
-            parts = [p["text"] for p in turn.get("parts", []) if "text" in p]
-            if role and parts:
-                sdk_history.append({"role": role, "parts": parts})
+        if "PATHWAY" in route_decision:
+            ccp_reply = (
+                "I am so sorry. Losing something or feeling this way can really hurt. We can pray, and I also want "
+                "you to tell a grown-up you trust so they can sit with you and help you feel cared for. \n\n"
+                "Dear Jesus, please comfort this child right now. Thank You for being near to them. Help them feel Your "
+                "nearness and help their family care for each other while they are sad. Amen."
+            )
+            return jsonify({"reply": ccp_reply})
 
-        chat_session = model.start_chat(history=sdk_history)
-
-        user_parts = []
+        # 🍳 Standard Core Teaching Path with History
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT role, message FROM chat_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        history_contents = []
+        for row in reversed(rows):
+            history_contents.append(
+                types.Content(role="user" if row[0] == "user" else "model", parts=[types.Part.from_text(text=row[1])])
+            )
+            
+        current_parts = []
         if img_b64:
-            try:
-                user_parts.append(
-                    {"mime_type": "image/jpeg", "data": _decode_frame(img_b64)}
-                )
-            except Exception:
-                pass
-        user_parts.append(message)
+            try: current_parts.append(types.Part.from_bytes(data=_decode_frame(img_b64), mime_type="image/jpeg"))
+            except: pass
+        current_parts.append(types.Part.from_text(text=message))
+        
+        full_contents = history_contents + [types.Content(role="user", parts=current_parts)]
 
-        response = chat_session.send_message(
-            user_parts,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=full_contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPTS.get(age, SYSTEM_PROMPTS["apprentice"]),
                 max_output_tokens=180,
-                temperature=0.78,
-                top_p=0.92,
-            ),
+                temperature=0.75
+            )
         )
-
         reply_text = response.text
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO chat_history (user_id, role, message) VALUES (?, 'user', ?)", (user_id, message))
+        cursor.execute("INSERT INTO chat_history (user_id, role, message) VALUES (?, 'model', ?)", (user_id, reply_text))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"reply": reply_text})
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
-        updated_history = history + [
-            {"role": "user",  "parts": [{"text": message}]},
-            {"role": "model", "parts": [{"text": reply_text}]},
-        ]
-        if len(updated_history) > 16:
-            updated_history = updated_history[-16:]
-
-        return jsonify({"reply": reply_text, "history": updated_history})
-
-    except EnvironmentError as e:
-        return jsonify({"error": str(e)}), 503
-    except Exception as e:
-        app.logger.error("chat error: %s", e)
-        return jsonify({"error": str(e)}), 500
-
-
-# ── Local dev entry point ─────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print(f"\n🤖  Cap is running → http://localhost:{port}")
-    print(f"    Key configured: {bool(os.environ.get('GEMINI_API_KEY'))}\n")
+    print(f"\n🤖 Cap Master Engine Modern SDK [Dual-Path Capable] loaded → http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -1,0 +1,42 @@
+/* App-level layout shell for Captain Culinary Kids */
+
+.App {
+    min-height: 100vh;
+}
+
+.cck-shell {
+    min-height: 100vh;
+    padding-bottom: 96px; /* room for bottom nav */
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+}
+
+@media (max-width: 640px) {
+    .cck-shell {
+        padding-bottom: 140px; /* extra room on mobile: nav sits above preview badge */
+    }
+}
+
+.cck-page {
+    padding: 1.25rem 1.25rem 2rem;
+}
+
+@media (min-width: 768px) {
+    .cck-page {
+        padding: 2.25rem 2rem 3rem;
+    }
+}
+
+.cck-no-nav {
+    padding-bottom: 0;
+}
+
+.cck-shell-fluid {
+    max-width: none;
+    padding: 0;
+}
+
+.cck-shell-fluid.cck-no-nav {
+    padding-bottom: 0;
+}
