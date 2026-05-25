@@ -23,7 +23,6 @@ on the front-end while the backend acts as a gentle cloud sync layer.
 from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
@@ -31,22 +30,81 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
-
+import sqlite3
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# SQLite Database path setup
+DB_PATH = Path(__file__).parent / "culinary_chef.db"
+
+def init_db():
+    """Creates the database tables automatically if they don't exist yet."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Table for progress sync
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS progress (
+            sessionId TEXT PRIMARY KEY,
+            ageGroup TEXT,
+            completedLessons TEXT,
+            earnedBadges TEXT,
+            completedChallenges TEXT,
+            settings TEXT,
+            updatedAt TEXT
+        )
+    """)
+    
+    # Table for food truck builders
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS food_trucks (
+            id TEXT PRIMARY KEY,
+            sessionId TEXT,
+            truckName TEXT,
+            foodIdea TEXT,
+            menu1 TEXT,
+            menu2 TEXT,
+            menu3 TEXT,
+            targetCustomer TEXT,
+            brandStyle TEXT,
+            safetyNote TEXT,
+            costThought TEXT,
+            serviceMission TEXT,
+            createdAt TEXT
+        )
+    """)
+    
+    # Table for restaurant builders
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS restaurants (
+            id TEXT PRIMARY KEY,
+            sessionId TEXT,
+            restaurantName TEXT,
+            concept TEXT,
+            hospitalityPromise TEXT,
+            menuIdea1 TEXT,
+            menuIdea2 TEXT,
+            menuIdea3 TEXT,
+            teamRoles TEXT,
+            cleanlinessPlan TEXT,
+            guestExperience TEXT,
+            communityPurpose TEXT,
+            createdAt TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Initialize the tables immediately on launch
+init_db()
 
 app = FastAPI(title="Captain Culinary Kids API")
 api_router = APIRouter(prefix="/api")
 
 # ---------------------------------------------------------------------------
-# Static curriculum content (mirrors front-end /src/data/lessons.js so either
-# layer can be the source of truth during demo). In production the front-end
-# fetches these to enable cloud-driven curriculum updates.
+# Static curriculum content (mirrors front-end /src/data/lessons.js)
 # ---------------------------------------------------------------------------
 
 LESSONS: List[Dict[str, Any]] = [
@@ -160,183 +218,4 @@ GLOBAL_MISSIONS: List[Dict[str, Any]] = [
 
 FAMILY_CHALLENGES: List[Dict[str, Any]] = [
     {"id": "fc-1", "title": "Three Safety Zones", "prompt": "Help an adult check the kitchen for three safety zones: clean hands, clear counter, safe tools."},
-    {"id": "fc-2", "title": "Colorful Snack Plate", "prompt": "Build a colorful snack plate with an adult — fruit, protein, grain, water."},
-    {"id": "fc-3", "title": "Set The Table", "prompt": "Help set the table tonight and explain one safety rule you learned."},
-    {"id": "fc-4", "title": "Family Memory Meal", "prompt": "Ask a family member about a favorite meal from childhood. Take notes."},
-    {"id": "fc-5", "title": "Plan One Dinner", "prompt": "Help plan one dinner this week. Choose simple, balanced foods."},
-    {"id": "fc-6", "title": "Serve Someone", "prompt": "Serve a neighbor, church group, school group, or family member with a small food gift."},
-]
-
-
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-class ProgressDoc(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    sessionId: str
-    ageGroup: Optional[str] = None
-    completedLessons: List[str] = Field(default_factory=list)
-    earnedBadges: List[str] = Field(default_factory=list)
-    completedChallenges: List[str] = Field(default_factory=list)
-    settings: Dict[str, Any] = Field(default_factory=dict)
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class FoodTruckConcept(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    sessionId: str
-    truckName: str
-    foodIdea: str
-    menu1: str
-    menu2: str
-    menu3: str
-    targetCustomer: str
-    brandStyle: str
-    safetyNote: str
-    costThought: str
-    serviceMission: str
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class RestaurantConcept(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    sessionId: str
-    restaurantName: str
-    concept: str
-    hospitalityPromise: str
-    menuIdea1: str
-    menuIdea2: str
-    menuIdea3: str
-    teamRoles: str
-    cleanlinessPlan: str
-    guestExperience: str
-    communityPurpose: str
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
-@api_router.get("/")
-async def root():
-    return {"app": "Captain Culinary Kids", "status": "ok", "version": "1.0.0"}
-
-
-@api_router.get("/lessons")
-async def list_lessons(ageGroup: Optional[str] = None, path: Optional[str] = None):
-    items = LESSONS
-    if ageGroup:
-        items = [item for item in items if item["ageGroup"] == ageGroup]
-    if path:
-        items = [item for item in items if item["path"] == path]
-    return {"items": items, "count": len(items)}
-
-
-@api_router.get("/lessons/{lesson_id}")
-async def get_lesson(lesson_id: str):
-    for item in LESSONS:
-        if item["id"] == lesson_id:
-            return item
-    raise HTTPException(status_code=404, detail="Lesson not found")
-
-
-@api_router.get("/badges")
-async def list_badges():
-    return {"items": BADGES}
-
-
-@api_router.get("/missions/global")
-async def list_global_missions():
-    return {"items": GLOBAL_MISSIONS}
-
-
-@api_router.get("/missions/family")
-async def list_family_challenges():
-    return {"items": FAMILY_CHALLENGES}
-
-
-@api_router.get("/progress/{session_id}")
-async def get_progress(session_id: str):
-    doc = await db.progress.find_one({"sessionId": session_id}, {"_id": 0})
-    if not doc:
-        return ProgressDoc(sessionId=session_id).model_dump()
-    if isinstance(doc.get("updatedAt"), str):
-        doc["updatedAt"] = datetime.fromisoformat(doc["updatedAt"])
-    return doc
-
-
-@api_router.post("/progress/{session_id}")
-async def save_progress(session_id: str, payload: ProgressDoc):
-    payload.sessionId = session_id
-    payload.updatedAt = datetime.now(timezone.utc)
-    doc = payload.model_dump()
-    doc["updatedAt"] = doc["updatedAt"].isoformat()
-    await db.progress.update_one(
-        {"sessionId": session_id},
-        {"$set": doc},
-        upsert=True,
-    )
-    return {"ok": True, "sessionId": session_id}
-
-
-@api_router.post("/builders/food-truck", response_model=FoodTruckConcept)
-async def save_food_truck(payload: FoodTruckConcept):
-    doc = payload.model_dump()
-    doc["createdAt"] = doc["createdAt"].isoformat()
-    await db.food_trucks.insert_one(doc)
-    return payload
-
-
-@api_router.get("/builders/food-truck/{session_id}")
-async def list_food_trucks(session_id: str):
-    items = await db.food_trucks.find({"sessionId": session_id}, {"_id": 0}).to_list(100)
-    for it in items:
-        if isinstance(it.get("createdAt"), str):
-            it["createdAt"] = datetime.fromisoformat(it["createdAt"])
-    return {"items": items}
-
-
-@api_router.post("/builders/restaurant", response_model=RestaurantConcept)
-async def save_restaurant(payload: RestaurantConcept):
-    doc = payload.model_dump()
-    doc["createdAt"] = doc["createdAt"].isoformat()
-    await db.restaurants.insert_one(doc)
-    return payload
-
-
-@api_router.get("/builders/restaurant/{session_id}")
-async def list_restaurants(session_id: str):
-    items = await db.restaurants.find({"sessionId": session_id}, {"_id": 0}).to_list(100)
-    for it in items:
-        if isinstance(it.get("createdAt"), str):
-            it["createdAt"] = datetime.fromisoformat(it["createdAt"])
-    return {"items": items}
-
-
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+    {"id": "fc-2", "title": "Colorful Snack Plate", "prompt": "
