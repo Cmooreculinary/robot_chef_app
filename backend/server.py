@@ -16,9 +16,6 @@ Endpoints:
   GET  /api/builders/food-truck/{session_id}
   POST /api/builders/restaurant    Save Restaurant Concept Card
   GET  /api/builders/restaurant/{session_id}
-
-This file is intentionally minimal: localStorage holds the source-of-truth
-on the front-end while the backend acts as a gentle cloud sync layer.
 """
 from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
@@ -218,4 +215,265 @@ GLOBAL_MISSIONS: List[Dict[str, Any]] = [
 
 FAMILY_CHALLENGES: List[Dict[str, Any]] = [
     {"id": "fc-1", "title": "Three Safety Zones", "prompt": "Help an adult check the kitchen for three safety zones: clean hands, clear counter, safe tools."},
-    {"id": "fc-2", "title": "Colorful Snack Plate", "prompt": "
+    {"id": "fc-2", "title": "Colorful Snack Plate", "prompt": "Build a colorful snack plate with an adult — fruit, protein, grain, water."},
+    {"id": "fc-3", "title": "Set The Table", "prompt": "Help set the table tonight and explain one safety rule you learned."},
+    {"id": "fc-4", "title": "Family Memory Meal", "prompt": "Ask a family member about a favorite meal from childhood. Take notes."},
+    {"id": "fc-5", "title": "Plan One Dinner", "prompt": "Help plan one dinner this week. Choose simple, balanced foods."},
+    {"id": "fc-6", "title": "Serve Someone", "prompt": "Serve a neighbor, church group, school group, or family member with a small food gift."},
+]
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+class ProgressDoc(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    sessionId: str
+    ageGroup: Optional[str] = None
+    completedLessons: List[str] = Field(default_factory=list)
+    earnedBadges: List[str] = Field(default_factory=list)
+    completedChallenges: List[str] = Field(default_factory=list)
+    settings: Dict[str, Any] = Field(default_factory=dict)
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class FoodTruckConcept(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    sessionId: str
+    truckName: str
+    foodIdea: str
+    menu1: str
+    menu2: str
+    menu3: str
+    targetCustomer: str
+    brandStyle: str
+    safetyNote: str
+    costThought: str
+    serviceMission: str
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RestaurantConcept(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    sessionId: str
+    restaurantName: str
+    concept: str
+    hospitalityPromise: str
+    menuIdea1: str
+    menuIdea2: str
+    menuIdea3: str
+    teamRoles: str
+    cleanlinessPlan: str
+    guestExperience: str
+    communityPurpose: str
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@api_router.get("/")
+async def root():
+    return {"app": "Captain Culinary Kids", "status": "ok", "version": "1.0.0"}
+
+
+@api_router.get("/lessons")
+async def list_lessons(ageGroup: Optional[str] = None, path: Optional[str] = None):
+    items = LESSONS
+    if ageGroup:
+        items = [item for item in items if item["ageGroup"] == ageGroup]
+    if path:
+        items = [item for item in items if item["path"] == path]
+    return {"items": items, "count": len(items)}
+
+
+@api_router.get("/lessons/{lesson_id}")
+async def get_lesson(lesson_id: str):
+    for item in LESSONS:
+        if item["id"] == lesson_id:
+            return item
+    raise HTTPException(status_code=404, detail="Lesson not found")
+
+
+@api_router.get("/badges")
+async def list_badges():
+    return {"items": BADGES}
+
+
+@api_router.get("/missions/global")
+async def list_global_missions():
+    return {"items": GLOBAL_MISSIONS}
+
+
+@api_router.get("/missions/family")
+async def list_family_challenges():
+    return {"items": FAMILY_CHALLENGES}
+
+
+# ---------------------------------------------------------------------------
+# Database Sync Routes (SQLite Engine)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/progress/{session_id}")
+async def get_progress(session_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM progress WHERE sessionId = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return ProgressDoc(sessionId=session_id).model_dump()
+        
+    doc = dict(row)
+    doc["completedLessons"] = json.loads(doc["completedLessons"])
+    doc["earnedBadges"] = json.loads(doc["earnedBadges"])
+    doc["completedChallenges"] = json.loads(doc["completedChallenges"])
+    doc["settings"] = json.loads(doc["settings"])
+    
+    if isinstance(doc.get("updatedAt"), str):
+        doc["updatedAt"] = datetime.fromisoformat(doc["updatedAt"])
+    return doc
+
+
+@api_router.post("/progress/{session_id}")
+async def save_progress(session_id: str, payload: ProgressDoc):
+    payload.sessionId = session_id
+    payload.updatedAt = datetime.now(timezone.utc)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO progress (sessionId, ageGroup, completedLessons, earnedBadges, completedChallenges, settings, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(sessionId) DO UPDATE SET
+            ageGroup=excluded.ageGroup,
+            completedLessons=excluded.completedLessons,
+            earnedBadges=excluded.earnedBadges,
+            completedChallenges=excluded.completedChallenges,
+            settings=excluded.settings,
+            updatedAt=excluded.updatedAt
+    """, (
+        session_id,
+        payload.ageGroup,
+        json.dumps(payload.completedLessons),
+        json.dumps(payload.earnedBadges),
+        json.dumps(payload.completedChallenges),
+        json.dumps(payload.settings),
+        payload.updatedAt.isoformat()
+    ))
+    
+    conn.commit()
+    conn.close()
+    return {"ok": True, "sessionId": session_id}
+
+
+@api_router.post("/builders/food-truck", response_model=FoodTruckConcept)
+async def save_food_truck(payload: FoodTruckConcept):
+    doc = payload.model_dump()
+    doc["createdAt"] = doc["createdAt"].isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO food_trucks (id, sessionId, truckName, foodIdea, menu1, menu2, menu3, targetCustomer, brandStyle, safetyNote, costThought, serviceMission, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        payload.id, payload.sessionId, payload.truckName, payload.foodIdea,
+        payload.menu1, payload.menu2, payload.menu3, payload.targetCustomer,
+        payload.brandStyle, payload.safetyNote, payload.costThought, payload.serviceMission,
+        doc["createdAt"]
+    ))
+    conn.commit()
+    conn.close()
+    return payload
+
+
+@api_router.get("/builders/food-truck/{session_id}")
+async def list_food_trucks(session_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM food_trucks WHERE sessionId = ?", (session_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    items = []
+    for row in rows:
+        it = dict(row)
+        if isinstance(it.get("createdAt"), str):
+            it["createdAt"] = datetime.fromisoformat(it["createdAt"])
+        items.append(it)
+        
+    return {"items": items}
+
+
+@api_router.post("/builders/restaurant", response_model=RestaurantConcept)
+async def save_restaurant(payload: RestaurantConcept):
+    doc = payload.model_dump()
+    doc["createdAt"] = doc["createdAt"].isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO restaurants (id, sessionId, restaurantName, concept, hospitalityPromise, menuIdea1, menuIdea2, menuIdea3, teamRoles, cleanlinessPlan, guestExperience, communityPurpose, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        payload.id, payload.sessionId, payload.restaurantName, payload.concept,
+        payload.hospitalityPromise, payload.menuIdea1, payload.menuIdea2, payload.menuIdea3,
+        payload.teamRoles, payload.cleanlinessPlan, payload.guestExperience, payload.communityPurpose,
+        doc["createdAt"]
+    ))
+    conn.commit()
+    conn.close()
+    return payload
+
+
+@api_router.get("/builders/restaurant/{session_id}")
+async def list_restaurants(session_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM restaurants WHERE sessionId = ?", (session_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    items = []
+    for row in rows:
+        it = dict(row)
+        if isinstance(it.get("createdAt"), str):
+            it["createdAt"] = datetime.fromisoformat(it["createdAt"])
+        items.append(it)
+        
+    return {"items": items}
+
+
+# ---------------------------------------------------------------------------
+# Server Activation & CORS
+# ---------------------------------------------------------------------------
+
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
